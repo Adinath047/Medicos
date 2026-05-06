@@ -3,7 +3,10 @@
 
 import axios from 'axios';
 
-const SERVER_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:4000/api';
+const isDev = import.meta.env.DEV;
+const SERVER_URL = isDev
+  ? ((import.meta as any).env?.VITE_API_URL || 'http://localhost:4000/api')
+  : '/api';  // Same origin in production (Railway serves both)
 
 export const apiClient = axios.create({
   baseURL: SERVER_URL,

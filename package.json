@@ -2,14 +2,16 @@
   "name": "medicos-emr",
   "version": "1.0.0",
   "description": "Offline-first Hospital EMR — monorepo root",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
-    "server": "cd server && npm start",
+    "build": "cd client && npm install && npm run build",
+    "start": "cd server && npm install && node server.js",
     "server:dev": "cd server && npm run dev",
-    "client": "cd client && npm run dev",
-    "client:build": "cd client && npm run build",
-    "install:all": "cd server && npm install && cd ../client && npm install",
-    "dev": "concurrently \"npm run server:dev\" \"npm run client\"",
-    "start": "concurrently \"npm run server\" \"npm run client\""
+    "client:dev": "cd client && npm run dev",
+    "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
+    "install:all": "cd server && npm install && cd ../client && npm install"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
