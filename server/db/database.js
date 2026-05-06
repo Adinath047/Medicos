@@ -37,6 +37,13 @@ function getDB() {
          key   TEXT PRIMARY KEY,
          value TEXT NOT NULL
        )`,
+      // Fix seed user password hashes (old hash was placeholder, not actual passwords)
+      `UPDATE users SET password = '$2a$10$MLl//yWnowDtuDfcC1Y.B.IqOugs3ssrG0KH97n3Kpdx5aYKx/A2i'
+       WHERE id = 'usr-admin-001' AND password = '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'`,
+      `UPDATE users SET password = '$2a$10$P7E4OHjw26NaRnJESh85OudIwEUwJxfILUIyBEy.jO3Q2WiEo4O2e'
+       WHERE id = 'usr-doc-001' AND password = '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'`,
+      `UPDATE users SET password = '$2a$10$DUYts83FR/pnoqZ0xE4qgOK4dPZ8VLK4Dmnkm29C1AhpfAc4md5jW'
+       WHERE id = 'usr-rcpt-001' AND password = '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'`,
     ];
     for (const m of migrations) {
       try { db.exec(m); } catch { /* already exists */ }

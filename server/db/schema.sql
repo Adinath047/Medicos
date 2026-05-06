@@ -288,19 +288,19 @@ INSERT OR IGNORE INTO hospitals (id, name, type, city, phone) VALUES
 -- Default super admin password: Admin@123 (bcrypt hash)
 INSERT OR IGNORE INTO users (id, name, email, password, role, hospital_id) VALUES
   ('usr-admin-001', 'System Admin', 'admin@medicos.local',
-   '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
+   '$2a$10$MLl//yWnowDtuDfcC1Y.B.IqOugs3ssrG0KH97n3Kpdx5aYKx/A2i',
    'admin', 'hsp-001');
 
 -- Default doctor: Doctor@123
 INSERT OR IGNORE INTO users (id, name, email, password, role, hospital_id) VALUES
   ('usr-doc-001', 'Dr. Priya Sharma', 'dr.sharma@medicos.local',
-   '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
+   '$2a$10$P7E4OHjw26NaRnJESh85OudIwEUwJxfILUIyBEy.jO3Q2WiEo4O2e',
    'doctor', 'hsp-001');
 
 -- Default receptionist: Recept@123
 INSERT OR IGNORE INTO users (id, name, email, password, role, hospital_id) VALUES
   ('usr-rcpt-001', 'Anita Patel', 'reception@medicos.local',
-   '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
+   '$2a$10$DUYts83FR/pnoqZ0xE4qgOK4dPZ8VLK4Dmnkm29C1AhpfAc4md5jW',
    'receptionist', 'hsp-001');
 
 -- Sample patient
