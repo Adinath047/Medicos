@@ -1,0 +1,388 @@
+// client/src/pages/AdminPortal.tsx
+// Private admin portal — only for registering/managing doctors & receptionists.
+// This screen is NOT accessible from the login credentials shared with staff.
+import React, { useState, useEffect } from 'react';
+import { useAuthStore } from '../store/authStore';
+import { apiClient } from '../api/client';
+
+const ROLES = ['doctor', 'receptionist', 'nurse'] as const;
+const SPECIALIZATIONS = [
+  'General Medicine','General Surgery','Pediatrics','Obstetrics & Gynaecology',
+  'Cardiology','Neurology','Orthopedics','Ophthalmology','ENT','Dermatology',
+  'Psychiatry','Pulmonology','Nephrology','Urology','Gastroenterology','Oncology',
+  'Endocrinology','Emergency Medicine','Radiology','Pathology','Dentistry','Other',
+];
+
+const ROLE_COLOR: Record<string, string> = { doctor:'#0d9488', receptionist:'#d97706', nurse:'#7c3aed' };
+const ROLE_BG:    Record<string, string> = { doctor:'#f0fdf4', receptionist:'#fffbeb', nurse:'#f5f3ff' };
+
+// ── Add Staff Modal ────────────────────────────────────────────────────
+function AddModal({ onClose, onDone }: { onClose: () => void; onDone: (u: any) => void }) {
+  const [form, setForm] = useState({ name:'', email:'', password:'', confirmPassword:'', role:'doctor' as typeof ROLES[number], specialization:'', phone:'', license_number:'' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.name || !form.email || !form.password) { setError('Name, email and password are required'); return; }
+    if (form.password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (form.password !== form.confirmPassword) { setError('Passwords do not match'); return; }
+    setSaving(true); setError('');
+    try {
+      const res = await apiClient.post('/users', form);
+      onDone(res.data);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Failed. Is the server running?');
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="modal-title">Register New Staff</div>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="modal-body">
+            {error && <div className="alert alert-danger">{error}</div>}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+
+              <div style={{ gridColumn:'1/-1' }} className="form-group">
+                <label className="form-label">Full Name *</label>
+                <input className="input" placeholder="Dr. Ramesh Kumar" value={form.name} onChange={e => set('name', e.target.value)} required />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Role *</label>
+                <select className="input" value={form.role} onChange={e => set('role', e.target.value)}>
+                  <option value="doctor">Doctor</option>
+                  <option value="receptionist">Receptionist</option>
+                  <option value="nurse">Nurse</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Phone</label>
+                <input className="input" type="tel" placeholder="+91 98765 43210" value={form.phone} onChange={e => set('phone', e.target.value)} />
+              </div>
+
+              <div style={{ gridColumn:'1/-1' }} className="form-group">
+                <label className="form-label">Login Email *</label>
+                <input className="input" type="email" placeholder="dr.kumar@hospital.local" value={form.email} onChange={e => set('email', e.target.value)} required />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Password *</label>
+                <input className="input" type="password" placeholder="Min 6 characters" value={form.password} onChange={e => set('password', e.target.value)} required />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Confirm Password *</label>
+                <input className="input" type="password" placeholder="Repeat password" value={form.confirmPassword} onChange={e => set('confirmPassword', e.target.value)} required />
+              </div>
+
+              {form.role === 'doctor' && (
+                <>
+                  <div style={{ gridColumn:'1/-1' }} className="form-group">
+                    <label className="form-label">Specialization</label>
+                    <select className="input" value={form.specialization} onChange={e => set('specialization', e.target.value)}>
+                      <option value="">— Select —</option>
+                      {SPECIALIZATIONS.map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ gridColumn:'1/-1' }} className="form-group">
+                    <label className="form-label">License / Registration No.</label>
+                    <input className="input" placeholder="e.g. MH-12345" value={form.license_number} onChange={e => set('license_number', e.target.value)} />
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? <><div className="spinner spinner-sm"/>Registering…</> : 'Register Staff'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Edit / Reset-password Modal ────────────────────────────────────────
+function EditModal({ staff, onClose, onDone }: { staff: any; onClose: () => void; onDone: (u: any) => void }) {
+  const [form, setForm] = useState({ name: staff.name, phone: staff.phone||'', specialization: staff.specialization||'', license_number: staff.license_number||'', is_active: staff.is_active });
+  const [newPwd, setNewPwd]   = useState('');
+  const [saving, setSaving]   = useState(false);
+  const [pwdBusy, setPwdBusy] = useState(false);
+  const [error, setError]     = useState('');
+  const [ok, setOk]           = useState('');
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault(); setSaving(true); setError(''); setOk('');
+    try {
+      await apiClient.patch(`/users/${staff.id}`, form);
+      setOk('Saved'); onDone({ ...staff, ...form });
+    } catch (err: any) { setError(err?.response?.data?.error || 'Save failed'); }
+    finally { setSaving(false); }
+  }
+
+  async function resetPwd() {
+    if (!newPwd || newPwd.length < 6) { setError('Password must be at least 6 characters'); return; }
+    setPwdBusy(true); setError(''); setOk('');
+    try {
+      await apiClient.post(`/users/${staff.id}/reset-password`, { password: newPwd });
+      setOk('Password reset'); setNewPwd('');
+    } catch (err: any) { setError(err?.response?.data?.error || 'Reset failed'); }
+    finally { setPwdBusy(false); }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <div className="modal-title">{staff.name}</div>
+            <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>
+              <span style={{ color: ROLE_COLOR[staff.role], fontWeight:600, textTransform:'capitalize' }}>{staff.role}</span> · {staff.email}
+            </div>
+          </div>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={save}>
+          <div className="modal-body">
+            {error && <div className="alert alert-danger">{error}</div>}
+            {ok    && <div className="alert alert-success">✓ {ok}</div>}
+
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <div style={{ gridColumn:'1/-1' }} className="form-group">
+                <label className="form-label">Full Name</label>
+                <input className="input" value={form.name} onChange={e => set('name', e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Phone</label>
+                <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Status</label>
+                <select className="input" value={form.is_active} onChange={e => set('is_active', Number(e.target.value))}>
+                  <option value={1}>Active</option>
+                  <option value={0}>Deactivated</option>
+                </select>
+              </div>
+              {staff.role === 'doctor' && (
+                <>
+                  <div style={{ gridColumn:'1/-1' }} className="form-group">
+                    <label className="form-label">Specialization</label>
+                    <select className="input" value={form.specialization} onChange={e => set('specialization', e.target.value)}>
+                      <option value="">— None —</option>
+                      {SPECIALIZATIONS.map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ gridColumn:'1/-1' }} className="form-group">
+                    <label className="form-label">License No.</label>
+                    <input className="input" value={form.license_number} onChange={e => set('license_number', e.target.value)} />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div style={{ borderTop:'1px solid var(--border)', marginTop:6, paddingTop:14 }}>
+              <div className="form-label" style={{ marginBottom:6 }}>Reset Password</div>
+              <div style={{ display:'flex', gap:8 }}>
+                <input className="input" type="password" placeholder="New password (min 6)" value={newPwd} onChange={e => setNewPwd(e.target.value)} />
+                <button type="button" className="btn btn-secondary" style={{ flexShrink:0 }} onClick={resetPwd} disabled={pwdBusy}>
+                  {pwdBusy ? <div className="spinner spinner-sm"/> : 'Reset'}
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? <><div className="spinner spinner-sm"/>Saving…</> : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin Portal ───────────────────────────────────────────────────────
+export default function AdminPortal() {
+  const { user, logout } = useAuthStore();
+  const [staff, setStaff]           = useState<any[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState('');
+  const [showAdd, setShowAdd]       = useState(false);
+  const [editing, setEditing]       = useState<any>(null);
+  const [roleFilter, setRoleFilter] = useState<string>('all');
+  const [search, setSearch]         = useState('');
+
+  useEffect(() => { loadStaff(); }, []);
+
+  async function loadStaff() {
+    setLoading(true); setError('');
+    try {
+      const res = await apiClient.get('/users');
+      setStaff(res.data.users);
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Cannot connect to server. Start the backend first.');
+    } finally { setLoading(false); }
+  }
+
+  const filtered = staff.filter(s => {
+    const matchRole   = roleFilter === 'all' || s.role === roleFilter;
+    const matchSearch = !search || s.name.toLowerCase().includes(search.toLowerCase()) || s.email.toLowerCase().includes(search.toLowerCase());
+    return matchRole && matchSearch;
+  });
+
+  const counts = {
+    all: staff.length,
+    doctor: staff.filter(s => s.role === 'doctor').length,
+    receptionist: staff.filter(s => s.role === 'receptionist').length,
+    nurse: staff.filter(s => s.role === 'nurse').length,
+  };
+
+  return (
+    <div style={{ minHeight:'100vh', background:'#f8fafc', display:'flex', flexDirection:'column' }}>
+      {showAdd && <AddModal onClose={() => setShowAdd(false)} onDone={u => { setStaff(s => [u, ...s]); setShowAdd(false); }} />}
+      {editing  && <EditModal staff={editing} onClose={() => setEditing(null)} onDone={updated => { setStaff(s => s.map(x => x.id === updated.id ? { ...x, ...updated } : x)); setEditing(null); }} />}
+
+      {/* Header */}
+      <header style={{ background:'#fff', borderBottom:'1px solid var(--border)', padding:'0 28px', height:60, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, boxShadow:'var(--shadow-sm)' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <div style={{ width:34, height:34, borderRadius:10, background:'var(--primary-grad)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          </div>
+          <div>
+            <div style={{ fontWeight:800, fontSize:15, color:'var(--text)', lineHeight:1 }}>Medicos EMR</div>
+            <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:1 }}>Admin · Staff Management</div>
+          </div>
+        </div>
+
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <div style={{ textAlign:'right' }}>
+            <div style={{ fontWeight:600, fontSize:13 }}>{user?.name}</div>
+            <div style={{ fontSize:11, color:'#dc2626', fontWeight:600 }}>Administrator</div>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={logout}>Sign out</button>
+        </div>
+      </header>
+
+      {/* Main */}
+      <div style={{ maxWidth:900, margin:'0 auto', padding:'28px 20px', width:'100%', flex:1 }}>
+
+        {/* Stats */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20 }}>
+          {([['all','Total Staff','#6b7280'],['doctor','Doctors','#0d9488'],['receptionist','Receptionists','#d97706'],['nurse','Nurses','#7c3aed']] as const).map(([r, label, color]) => (
+            <div key={r}
+              onClick={() => setRoleFilter(r)}
+              style={{
+                background: roleFilter === r ? '#fff' : '#fff',
+                border: `2px solid ${roleFilter === r ? color : 'var(--border)'}`,
+                borderRadius:'var(--radius-lg)', padding:'16px', cursor:'pointer',
+                transition:'all 0.15s', boxShadow: roleFilter === r ? 'var(--shadow-sm)' : 'none',
+              }}>
+              <div style={{ fontSize:28, fontWeight:800, color }}>{counts[r]}</div>
+              <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Toolbar */}
+        <div style={{ display:'flex', gap:10, marginBottom:16, alignItems:'center' }}>
+          <div className="search-bar" style={{ flex:1 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input placeholder="Search by name or email…" value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Register Staff</button>
+        </div>
+
+        {/* Table card */}
+        <div className="card">
+          {error && <div className="alert alert-warning" style={{ margin:16 }}>⚠ {error}</div>}
+          {loading
+            ? <div style={{ padding:60, textAlign:'center' }}><div className="spinner" style={{ margin:'0 auto' }}/></div>
+            : filtered.length === 0
+              ? (
+                <div className="empty-state">
+                  <span className="empty-icon">👥</span>
+                  <h3>{search ? 'No results' : 'No staff yet'}</h3>
+                  <p>{search ? 'Try a different search.' : 'Register your first doctor or receptionist.'}</p>
+                  {!search && <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Register Staff</button>}
+                </div>
+              )
+              : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Staff Member</th>
+                        <th>Role</th>
+                        <th>Specialization</th>
+                        <th>Phone</th>
+                        <th>Status</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map(s => (
+                        <tr key={s.id}>
+                          <td>
+                            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                              <div style={{
+                                width:36, height:36, borderRadius:'50%', flexShrink:0,
+                                background: ROLE_BG[s.role] || '#f1f5f9',
+                                border: `2px solid ${ROLE_COLOR[s.role] || '#94a3b8'}`,
+                                display:'flex', alignItems:'center', justifyContent:'center',
+                                fontSize:12, fontWeight:700, color: ROLE_COLOR[s.role] || '#64748b',
+                                opacity: s.is_active ? 1 : 0.45,
+                              }}>
+                                {s.name?.split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
+                              </div>
+                              <div>
+                                <div style={{ fontWeight:600, fontSize:13 }}>{s.name}</div>
+                                <div style={{ fontSize:11, color:'var(--text-muted)' }}>{s.email}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <span style={{
+                              fontSize:11, fontWeight:700, padding:'3px 8px', borderRadius:20,
+                              background: ROLE_BG[s.role] || '#f1f5f9',
+                              color: ROLE_COLOR[s.role] || '#64748b',
+                              textTransform:'capitalize',
+                              border: `1px solid ${ROLE_COLOR[s.role]}33`,
+                            }}>{s.role}</span>
+                          </td>
+                          <td style={{ fontSize:12, color:'var(--text-muted)' }}>{s.specialization || '—'}</td>
+                          <td style={{ fontSize:12, color:'var(--text-muted)' }}>{s.phone || '—'}</td>
+                          <td>
+                            <span style={{
+                              fontSize:11, fontWeight:600, padding:'3px 8px', borderRadius:20,
+                              background: s.is_active ? '#f0fdf4' : '#fef2f2',
+                              color: s.is_active ? '#16a34a' : '#dc2626',
+                              border: `1px solid ${s.is_active ? '#bbf7d0' : '#fecaca'}`,
+                            }}>{s.is_active ? 'Active' : 'Inactive'}</span>
+                          </td>
+                          <td>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setEditing(s)}>Edit</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+          }
+        </div>
+      </div>
+    </div>
+  );
+}

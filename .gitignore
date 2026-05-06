@@ -1,12 +1,25 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
 # dependencies
 node_modules/
 
-# Expo
-.expo/
+# Environment variables — NEVER commit secrets
+.env
+.env.local
+.env*.local
+server/.env
+
+# SQLite database files — local only, not for git
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.db
+
+# Build output
 dist/
 web-build/
+build/
+
+# Expo
+.expo/
 expo-env.d.ts
 
 # Native
@@ -21,7 +34,7 @@ expo-env.d.ts
 # Metro
 .metro-health-check*
 
-# debug
+# Debug logs
 npm-debug.*
 yarn-debug.*
 yarn-error.*
@@ -30,12 +43,9 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
-
-# typescript
+# TypeScript
 *.tsbuildinfo
 
-# generated native folders
+# Generated native folders
 /ios
 /android
