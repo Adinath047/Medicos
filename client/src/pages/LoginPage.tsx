@@ -28,7 +28,7 @@ export default function LoginPage() {
   return (
     <div className="login-root">
       <div className="login-card">
-        <div className="login-logo-wrap">
+        <div className="login-logo-wrap" style={{ flexDirection:'column', alignItems:'center', textAlign:'center' }}>
           <div className="login-logo">🏥</div>
           <div>
             <div className="login-title">Medicos EMR</div>
