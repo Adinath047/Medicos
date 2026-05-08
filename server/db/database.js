@@ -33,6 +33,34 @@ function getDB() {
       "ALTER TABLE appointments ADD COLUMN patient_name TEXT",
       "ALTER TABLE appointments ADD COLUMN doctor_name TEXT",
       "ALTER TABLE billing ADD COLUMN patient_name TEXT",
+      // staff_type: 'front_desk' | 'pharmacy' — differentiates receptionist sub-functions
+      "ALTER TABLE users ADD COLUMN staff_type TEXT NOT NULL DEFAULT 'front_desk'",
+      // per-doctor consultation rates
+      "ALTER TABLE users ADD COLUMN consultation_fee REAL NOT NULL DEFAULT 0",
+      "ALTER TABLE users ADD COLUMN followup_fee REAL NOT NULL DEFAULT 0",
+      // billing type: 'consultation' | (pharmacy bills live in pharmacy_bills table)
+      "ALTER TABLE billing ADD COLUMN bill_type TEXT NOT NULL DEFAULT 'consultation'",
+      // tag all existing billing rows as consultation
+      "UPDATE billing SET bill_type = 'consultation' WHERE bill_type IS NULL OR bill_type = ''",
+      // pharmacy bills table — created by pharmacy staff
+      `CREATE TABLE IF NOT EXISTS pharmacy_bills (
+         id              TEXT PRIMARY KEY,
+         hospital_id     TEXT NOT NULL,
+         patient_id      TEXT NOT NULL REFERENCES patients(id),
+         prescription_id TEXT REFERENCES prescriptions(id),
+         pharmacist_id   TEXT NOT NULL REFERENCES users(id),
+         medicines       TEXT NOT NULL DEFAULT '[]',
+         total_amount    REAL NOT NULL DEFAULT 0,
+         discount        REAL NOT NULL DEFAULT 0,
+         net_amount      REAL NOT NULL DEFAULT 0,
+         paid_amount     REAL NOT NULL DEFAULT 0,
+         payment_mode    TEXT NOT NULL DEFAULT 'Cash',
+         payment_status  TEXT NOT NULL DEFAULT 'Pending',
+         invoice_number  TEXT,
+         notes           TEXT,
+         created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+         updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+       )`,
       `CREATE TABLE IF NOT EXISTS sync_meta (
          key   TEXT PRIMARY KEY,
          value TEXT NOT NULL

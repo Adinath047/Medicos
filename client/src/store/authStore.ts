@@ -5,6 +5,7 @@ import { apiClient } from '../api/client';
 interface AuthUser {
   id: string; name: string; email: string;
   role: string; hospitalId?: string; photoUrl?: string;
+  staff_type?: string; // 'front_desk' | 'pharmacy' — for receptionist sub-roles
 }
 
 interface AuthState {

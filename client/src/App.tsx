@@ -15,6 +15,7 @@ import PrescriptionsListPage from './pages/PrescriptionsListPage';
 import VitalsPage from './pages/VitalsPage';
 import AppointmentsPage from './pages/AppointmentsPage';
 import BillingPage from './pages/BillingPage';
+import PharmacyBillingPage from './pages/PharmacyBillingPage';
 import SettingsPage from './pages/SettingsPage';
 
 // ── SVG Icons ─────────────────────────────────────────────────────────
@@ -25,37 +26,38 @@ const Icons: Record<string, JSX.Element> = {
   appointments:  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
   billing:       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>,
   staff:         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>,
+  pharmacy: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></svg>,
   vitals:        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
 };
 
-// ── Role-based nav ────────────────────────────────────────────────────
-// ADMIN: only staff management — no clinical modules
-// DOCTOR: patients (view only) + prescription/encounter
-// RECEPTIONIST: patients (register) + appointments + billing
-const NAV: Record<string, Array<{ icon: string; label: string; page: string; section?: string }>> = {
-  admin: [
+// NAV is now a function so it can read staff_type for receptionists
+function getNav(user: any) {
+  if (user?.role === 'admin') return [
     { icon: 'staff', label: 'Staff Management', page: 'settings' },
-  ] as any,
-
-  doctor: [
+  ];
+  if (user?.role === 'doctor') return [
     { icon: 'patients',     label: 'My Patients',    page: 'patients' },
     { section: 'Clinical' },
     { icon: 'prescription', label: 'Prescriptions',  page: 'prescriptions' },
     { icon: 'encounters',   label: 'Encounters',     page: 'encounters' },
     { icon: 'vitals',       label: 'Vitals',         page: 'vitals' },
     { icon: 'appointments', label: 'Appointments',   page: 'appointments' },
-  ] as any,
-
-  receptionist: [
+  ];
+  // Pharmacy staff: only see pharmacy billing
+  if (user?.role === 'receptionist' && user?.staff_type === 'pharmacy') return [
+    { icon: 'pharmacy',  label: '💊 Pharmacy Billing', page: 'pharmacy' },
+  ];
+  // Front-desk receptionist (default)
+  return [
     { icon: 'patients',     label: 'Patients',       page: 'patients' },
     { icon: 'appointments', label: 'Appointments',   page: 'appointments' },
     { icon: 'billing',      label: 'Billing',        page: 'billing' },
-  ] as any,
-};
+  ];
+}
 
 // ── Sidebar ───────────────────────────────────────────────────────────
 function Sidebar({ page, onNav, user, sidebarOpen, onClose }: any) {
-  const nav = NAV[user?.role] ?? NAV.receptionist;
+  const nav = getNav(user);
   const initials = user?.name?.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase() ?? '??';
   const { logout } = useAuthStore();
 
@@ -158,8 +160,9 @@ export default function App() {
     if (!user) return;
     if (user.role === 'admin')        setPage('settings');
     else if (user.role === 'doctor')  setPage('patients');
+    else if (user.role === 'receptionist' && user.staff_type === 'pharmacy') setPage('pharmacy');
     else                              setPage('patients');
-  }, [user?.role]);
+  }, [user?.role, user?.staff_type]);
 
   function navigate(p: string, data?: any) { setPage(p); setPageData(data ?? null); }
 
@@ -190,6 +193,7 @@ export default function App() {
     new_vitals:       ['doctor', 'nurse'],
     appointments:     ['doctor', 'receptionist'],
     billing:          ['receptionist'],
+    pharmacy:         ['receptionist'],
   };
 
   function renderPage() {
@@ -211,6 +215,7 @@ export default function App() {
       case 'vitals':          return <VitalsPage onNavigate={navigate} />;
       case 'appointments':    return <AppointmentsPage onNavigate={navigate} />;
       case 'billing':         return <BillingPage onNavigate={navigate} />;
+      case 'pharmacy':        return <PharmacyBillingPage onNavigate={navigate} />;
       case 'patient_detail':  return <PatientDetail onNavigate={navigate} data={pageData} />;
       case 'new_encounter':   return <NewEncounter onNavigate={navigate} data={pageData} />;
       case 'new_prescription':return <PrescriptionPage onNavigate={navigate} data={pageData} />;

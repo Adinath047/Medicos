@@ -18,7 +18,13 @@ const ROLE_BG:    Record<string, string> = { doctor:'#f0fdf4', receptionist:'#ff
 
 // ── Add Staff Modal ────────────────────────────────────────────────────
 function AddModal({ onClose, onDone }: { onClose: () => void; onDone: (u: any) => void }) {
-  const [form, setForm] = useState({ name:'', email:'', password:'', confirmPassword:'', role:'doctor' as typeof ROLES[number], specialization:'', phone:'', license_number:'' });
+  const [form, setForm] = useState({
+    name:'', email:'', password:'', confirmPassword:'',
+    role:'doctor' as typeof ROLES[number],
+    staff_type: 'front_desk',    // for receptionist sub-type
+    specialization:'', phone:'', license_number:'',
+    consultation_fee: '', followup_fee:'',  // for doctor rates
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
@@ -83,6 +89,16 @@ function AddModal({ onClose, onDone }: { onClose: () => void; onDone: (u: any) =
                 <input className="input" type="password" placeholder="Repeat password" value={form.confirmPassword} onChange={e => set('confirmPassword', e.target.value)} required />
               </div>
 
+              {form.role === 'receptionist' && (
+                <div style={{ gridColumn:'1/-1' }} className="form-group">
+                  <label className="form-label">Staff Function *</label>
+                  <select className="input" value={form.staff_type} onChange={e => set('staff_type', e.target.value)}>
+                    <option value="front_desk">🖥️ Front Desk (Patients, Appointments, Billing)</option>
+                    <option value="pharmacy">💊 Pharmacy (Medicine dispensing only)</option>
+                  </select>
+                </div>
+              )}
+
               {form.role === 'doctor' && (
                 <>
                   <div style={{ gridColumn:'1/-1' }} className="form-group">
@@ -95,6 +111,16 @@ function AddModal({ onClose, onDone }: { onClose: () => void; onDone: (u: any) =
                   <div style={{ gridColumn:'1/-1' }} className="form-group">
                     <label className="form-label">License / Registration No.</label>
                     <input className="input" placeholder="e.g. MH-12345" value={form.license_number} onChange={e => set('license_number', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">OPD Consultation Fee ₹</label>
+                    <input className="input" type="number" min={0} step={50} placeholder="e.g. 500"
+                      value={form.consultation_fee} onChange={e => set('consultation_fee', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Follow-up Fee ₹</label>
+                    <input className="input" type="number" min={0} step={50} placeholder="e.g. 200"
+                      value={form.followup_fee} onChange={e => set('followup_fee', e.target.value)} />
                   </div>
                 </>
               )}
@@ -114,7 +140,14 @@ function AddModal({ onClose, onDone }: { onClose: () => void; onDone: (u: any) =
 
 // ── Edit / Reset-password Modal ────────────────────────────────────────
 function EditModal({ staff, onClose, onDone }: { staff: any; onClose: () => void; onDone: (u: any) => void }) {
-  const [form, setForm] = useState({ name: staff.name, phone: staff.phone||'', specialization: staff.specialization||'', license_number: staff.license_number||'', is_active: staff.is_active });
+  const [form, setForm] = useState({
+    name: staff.name, phone: staff.phone||'',
+    specialization: staff.specialization||'', license_number: staff.license_number||'',
+    is_active: staff.is_active,
+    staff_type: staff.staff_type || 'front_desk',
+    consultation_fee: staff.consultation_fee || 0,
+    followup_fee: staff.followup_fee || 0,
+  });
   const [newPwd, setNewPwd]   = useState('');
   const [saving, setSaving]   = useState(false);
   const [pwdBusy, setPwdBusy] = useState(false);
@@ -174,6 +207,15 @@ function EditModal({ staff, onClose, onDone }: { staff: any; onClose: () => void
                   <option value={0}>Deactivated</option>
                 </select>
               </div>
+              {staff.role === 'receptionist' && (
+                <div style={{ gridColumn:'1/-1' }} className="form-group">
+                  <label className="form-label">Staff Function</label>
+                  <select className="input" value={form.staff_type} onChange={e => set('staff_type', e.target.value)}>
+                    <option value="front_desk">🖥️ Front Desk</option>
+                    <option value="pharmacy">💊 Pharmacy</option>
+                  </select>
+                </div>
+              )}
               {staff.role === 'doctor' && (
                 <>
                   <div style={{ gridColumn:'1/-1' }} className="form-group">
@@ -186,6 +228,18 @@ function EditModal({ staff, onClose, onDone }: { staff: any; onClose: () => void
                   <div style={{ gridColumn:'1/-1' }} className="form-group">
                     <label className="form-label">License No.</label>
                     <input className="input" value={form.license_number} onChange={e => set('license_number', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">OPD Consultation Fee ₹</label>
+                    <input className="input" type="number" min={0} step={50}
+                      value={form.consultation_fee}
+                      onChange={e => set('consultation_fee', e.target.value as any)} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Follow-up Fee ₹</label>
+                    <input className="input" type="number" min={0} step={50}
+                      value={form.followup_fee}
+                      onChange={e => set('followup_fee', e.target.value as any)} />
                   </div>
                 </>
               )}
@@ -353,13 +407,25 @@ export default function AdminPortal() {
                             </div>
                           </td>
                           <td>
-                            <span style={{
-                              fontSize:11, fontWeight:700, padding:'3px 8px', borderRadius:20,
-                              background: ROLE_BG[s.role] || '#f1f5f9',
-                              color: ROLE_COLOR[s.role] || '#64748b',
-                              textTransform:'capitalize',
-                              border: `1px solid ${ROLE_COLOR[s.role]}33`,
-                            }}>{s.role}</span>
+                            <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+                              <span style={{
+                                fontSize:11, fontWeight:700, padding:'3px 8px', borderRadius:20,
+                                background: ROLE_BG[s.role] || '#f1f5f9',
+                                color: ROLE_COLOR[s.role] || '#64748b',
+                                textTransform:'capitalize',
+                                border: `1px solid ${ROLE_COLOR[s.role]}33`,
+                                display:'inline-block',
+                              }}>{s.role}</span>
+                              {s.role === 'receptionist' && s.staff_type === 'pharmacy' && (
+                                <span style={{ fontSize:10, fontWeight:600, padding:'2px 7px', borderRadius:20,
+                                  background:'#ecfdf5', color:'#059669', border:'1px solid #a7f3d0', display:'inline-block' }}>💊 Pharmacy</span>
+                              )}
+                              {s.role === 'doctor' && (s.consultation_fee > 0 || s.followup_fee > 0) && (
+                                <span style={{ fontSize:9.5, color:'#64748b' }}>
+                                  OPD ₹{s.consultation_fee || 0} · FU ₹{s.followup_fee || 0}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td style={{ fontSize:12, color:'var(--text-muted)' }}>{s.specialization || '—'}</td>
                           <td style={{ fontSize:12, color:'var(--text-muted)' }}>{s.phone || '—'}</td>
