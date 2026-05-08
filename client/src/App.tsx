@@ -17,6 +17,7 @@ import AppointmentsPage from './pages/AppointmentsPage';
 import BillingPage from './pages/BillingPage';
 import PharmacyBillingPage from './pages/PharmacyBillingPage';
 import SettingsPage from './pages/SettingsPage';
+import FrontDeskDashboard from './pages/FrontDeskDashboard';
 
 // ── SVG Icons ─────────────────────────────────────────────────────────
 const Icons: Record<string, JSX.Element> = {
@@ -28,6 +29,7 @@ const Icons: Record<string, JSX.Element> = {
   staff:         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>,
   pharmacy: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></svg>,
   vitals:        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
+  dashboard:     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>,
 };
 
 // NAV is now a function so it can read staff_type for receptionists
@@ -49,6 +51,7 @@ function getNav(user: any) {
   ];
   // Front-desk receptionist (default)
   return [
+    { icon: 'dashboard',    label: 'Dashboard',      page: 'dashboard' },
     { icon: 'patients',     label: 'Patients',       page: 'patients' },
     { icon: 'appointments', label: 'Appointments',   page: 'appointments' },
     { icon: 'billing',      label: 'Billing',        page: 'billing' },
@@ -142,7 +145,7 @@ function SyncBadge() {
 
 // ── Page titles ───────────────────────────────────────────────────────
 const PAGE_TITLES: Record<string, string> = {
-  patients: 'Patients', prescriptions: 'Prescriptions', encounters: 'Encounters',
+  dashboard: 'Dashboard', patients: 'Patients', prescriptions: 'Prescriptions', encounters: 'Encounters',
   vitals: 'Vitals', appointments: 'Appointments', billing: 'Billing',
   settings: 'Staff Management', patient_detail: 'Patient Record',
   new_encounter: 'New Encounter', new_prescription: 'Write Prescription', new_vitals: 'Record Vitals',
@@ -161,6 +164,7 @@ export default function App() {
     if (user.role === 'admin')        setPage('settings');
     else if (user.role === 'doctor')  setPage('patients');
     else if (user.role === 'receptionist' && user.staff_type === 'pharmacy') setPage('pharmacy');
+    else if (user.role === 'receptionist') setPage('dashboard');
     else                              setPage('patients');
   }, [user?.role, user?.staff_type]);
 
@@ -183,6 +187,7 @@ export default function App() {
   // ── Doctor & Receptionist: sidebar layout ────────────────────────────
   // Access control per role
   const ACCESS: Record<string, string[]> = {
+    dashboard:        ['receptionist'],
     patients:         ['doctor', 'receptionist', 'nurse'],
     patient_detail:   ['doctor', 'receptionist', 'nurse'],
     prescriptions:    ['doctor'],
@@ -209,6 +214,7 @@ export default function App() {
     }
 
     switch (page) {
+      case 'dashboard':       return <FrontDeskDashboard onNavigate={navigate} />;
       case 'patients':        return <PatientsPage onNavigate={navigate} autoOpen={pageData?.autoOpen} />;
       case 'prescriptions':   return <PrescriptionsListPage onNavigate={navigate} />;
       case 'encounters':      return <EncountersListPage onNavigate={navigate} />;
