@@ -1,11 +1,45 @@
 // client/src/pages/PrescriptionPage.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { apiClient } from '../api/client';
 import { db, markPending } from '../db/localDB';
 import { useAuthStore } from '../store/authStore';
 import { v4 as uuid } from 'uuid';
 import { printPrescriptionSlip } from '../utils/printTemplates';
-import { searchMedicines, findMedicineByName, type Medicine } from '../utils/medicines';
+import { searchMedicines, findMedicineByName, MEDICINES, type Medicine } from '../utils/medicines';
+
+// ── Allergy cross-check ───────────────────────────────────────────────
+/**
+ * Returns the matched allergy term if the drug (name + generics) conflicts
+ * with any of the patient's known allergies, otherwise null.
+ * Matching is case-insensitive and uses substring detection so
+ * "Penicillin" allergy catches "Amoxicillin" (a penicillin antibiotic).
+ */
+function checkAllergyConflict(medName: string, allergies: string[]): string | null {
+  if (!medName.trim() || allergies.length === 0) return null;
+
+  // Gather all search terms: the drug name itself + all its brand/generic names
+  const drug = MEDICINES.find(m =>
+    m.name.toLowerCase() === medName.toLowerCase() ||
+    m.generics.some(g => g.toLowerCase() === medName.toLowerCase())
+  );
+  const terms = drug
+    ? [drug.name, ...drug.generics, drug.category]
+    : [medName];
+
+  const termsLower = terms.map(t => t.toLowerCase());
+
+  for (const allergy of allergies) {
+    const a = allergy.toLowerCase().trim();
+    if (!a) continue;
+    // Check if any drug term contains the allergy keyword OR allergy keyword contains a drug term
+    for (const t of termsLower) {
+      if (t.includes(a) || a.includes(t.split(' ')[0])) {
+        return allergy; // return original casing
+      }
+    }
+  }
+  return null;
+}
 
 const FREQ = ['Once daily','Twice daily','Thrice daily','Every 8h','Every 6h','At bedtime','Before meals','After meals','As needed','Weekly'];
 const DUR  = ['1 day','3 days','5 days','7 days','10 days','14 days','1 month','2 months','3 months','Ongoing'];
@@ -176,12 +210,14 @@ function MedAutocomplete({ value, onChange, onSelect }: {
 
 
 // ── Medicine row ──────────────────────────────────────────────────────
-function MedRow({ med, index, onUpdate, onDelete, canDelete }: {
+function MedRow({ med, index, onUpdate, onDelete, canDelete, patientAllergies }: {
   med: typeof EMPTY_MED; index: number;
   onUpdate: (k: string, v: string) => void;
   onDelete: () => void; canDelete: boolean;
+  patientAllergies: string[];
 }) {
   const drugInfo = findMedicineByName(med.name);
+  const allergyMatch = checkAllergyConflict(med.name, patientAllergies);
 
   function handleSelect(m: Medicine) {
     onUpdate('name', m.name);
@@ -191,9 +227,11 @@ function MedRow({ med, index, onUpdate, onDelete, canDelete }: {
 
   return (
     <div style={{
-      background:'var(--surface)', border:'1px solid var(--border)',
+      background: allergyMatch ? '#fff5f5' : 'var(--surface)',
+      border: `1px solid ${allergyMatch ? '#fca5a5' : 'var(--border)'}`,
       borderRadius:'var(--radius-lg)', padding:'14px 16px',
-      display:'flex', flexDirection:'column', gap:10
+      display:'flex', flexDirection:'column', gap:10,
+      transition:'border-color 0.2s, background 0.2s',
     }}>
       {/* Row header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
@@ -217,7 +255,25 @@ function MedRow({ med, index, onUpdate, onDelete, canDelete }: {
             onChange={v => onUpdate('name', v)}
             onSelect={handleSelect}
           />
-          {drugInfo && (
+          {allergyMatch && (
+            <div style={{
+              marginTop:6, padding:'8px 12px',
+              background:'#fee2e2', border:'1px solid #fca5a5',
+              borderRadius:8, display:'flex', alignItems:'flex-start', gap:8,
+            }}>
+              <span style={{ fontSize:16, lineHeight:1, flexShrink:0 }}>⚠️</span>
+              <div>
+                <div style={{ fontWeight:700, fontSize:12, color:'#991b1b' }}>
+                  Allergy Conflict Detected
+                </div>
+                <div style={{ fontSize:11, color:'#7f1d1d', marginTop:2 }}>
+                  Patient is allergic to <strong>{allergyMatch}</strong>.
+                  This drug may cause an adverse reaction. Verify before prescribing.
+                </div>
+              </div>
+            </div>
+          )}
+          {!allergyMatch && drugInfo && (
             <div style={{ fontSize:10, color:'var(--primary)', marginTop:2 }}>
               ✓ {drugInfo.category} · Brands: {drugInfo.generics.slice(0,3).join(', ')}
             </div>
@@ -279,8 +335,12 @@ export default function PrescriptionPage({ onNavigate, data }: { onNavigate:(p:s
   const [saving, setSaving]         = useState(false);
   const [success, setSuccess]       = useState<any>(null);
   const [error, setError]           = useState('');
+  const [allergyOverride, setAllergyOverride] = useState(false);
 
-  const setMed = (i:number, k:string, v:string) => setMeds(ms => ms.map((m,j) => j===i ? {...m,[k]:v} : m));
+  const setMed = (i:number, k:string, v:string) => {
+    setMeds(ms => ms.map((m,j) => j===i ? {...m,[k]:v} : m));
+    setAllergyOverride(false); // reset override when medicines change
+  };
   const addMed = () => setMeds(ms => [...ms, {...EMPTY_MED}]);
   const delMed = (i:number) => setMeds(ms => ms.filter((_,j) => j!==i));
 
@@ -297,10 +357,44 @@ export default function PrescriptionPage({ onNavigate, data }: { onNavigate:(p:s
 
   const selectedPatient = patients.find(p => p.id === patientId);
 
+  // Parse allergies — stored as JSON string or already as array
+  const patientAllergies: string[] = useMemo(() => {
+    if (!selectedPatient) return [];
+    const raw = selectedPatient.allergies;
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.filter(Boolean);
+    try { return JSON.parse(raw).filter(Boolean); } catch { return []; }
+  }, [selectedPatient]);
+
+  // Compute which medicine rows have allergy conflicts
+  const allergyConflicts = useMemo(() =>
+    meds.map(m => checkAllergyConflict(m.name, patientAllergies)),
+  [meds, patientAllergies]);
+  const hasAllergyConflict = allergyConflicts.some(Boolean);
+
   async function submit(e:React.FormEvent) {
     e.preventDefault();
     if (!patientId) { setError('Please select a patient'); return; }
     if (meds.some(m => !m.name.trim())) { setError('All medicines need a name'); return; }
+
+    // ── Allergy guard ─────────────────────────────────────────────────
+    if (hasAllergyConflict && !allergyOverride) {
+      const conflictNames = allergyConflicts
+        .map((c, i) => c ? `${meds[i].name} (allergic to ${c})` : null)
+        .filter(Boolean)
+        .join(', ');
+      const confirmed = window.confirm(
+        `⚠️ ALLERGY CONFLICT\n\n` +
+        `The following medicines may conflict with the patient's known allergies:\n` +
+        `${conflictNames}\n\n` +
+        `Do you want to override and save anyway?\n` +
+        `(Only do this if you have clinically evaluated the risk.)`
+      );
+      if (!confirmed) return;
+      setAllergyOverride(true);
+    }
+    // ─────────────────────────────────────────────────────────────────
+
     setSaving(true); setError('');
     const now = new Date().toISOString();
     const id  = uuid();
@@ -312,6 +406,7 @@ export default function PrescriptionPage({ onNavigate, data }: { onNavigate:(p:s
       advice: advice||null, follow_up_date: followUp||null,
       patient_weight: patientWeight||null, slip_token: slipToken,
       created_by_role: user?.role||'doctor', created_at: now,
+      allergy_override: hasAllergyConflict && allergyOverride, // log the override
     };
     try {
       const res = await apiClient.post('/prescriptions', payload);
@@ -369,6 +464,32 @@ export default function PrescriptionPage({ onNavigate, data }: { onNavigate:(p:s
 
       {error && <div className="alert alert-danger">{error}</div>}
 
+      {/* Allergy conflict banner — shown when any medicine conflicts */}
+      {hasAllergyConflict && (
+        <div style={{
+          padding:'12px 16px', borderRadius:10,
+          background:'#fef2f2', border:'2px solid #f87171',
+          display:'flex', alignItems:'flex-start', gap:12,
+        }}>
+          <span style={{ fontSize:20, flexShrink:0, lineHeight:1, marginTop:1 }}>🚨</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontWeight:700, fontSize:13, color:'#991b1b', marginBottom:2 }}>
+              Allergy Warning — Review Required
+            </div>
+            <div style={{ fontSize:12, color:'#7f1d1d', lineHeight:1.5 }}>
+              {allergyConflicts.map((conflict, i) => conflict && (
+                <span key={i} style={{ display:'block' }}>
+                  • <strong>{meds[i].name || `Drug ${i+1}`}</strong> conflicts with known allergy: <strong>{conflict}</strong>
+                </span>
+              ))}
+            </div>
+            <div style={{ fontSize:11, color:'#6b7280', marginTop:6 }}>
+              You will be asked to confirm before saving. Check the individual drug rows below for details.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Patient selection */}
       <div className="card">
         <div className="card-header"><div className="card-title">Patient</div></div>
@@ -414,6 +535,7 @@ export default function PrescriptionPage({ onNavigate, data }: { onNavigate:(p:s
               onUpdate={(k,v) => setMed(i,k,v)}
               onDelete={() => delMed(i)}
               canDelete={meds.length > 1}
+              patientAllergies={patientAllergies}
             />
           ))}
         </div>
