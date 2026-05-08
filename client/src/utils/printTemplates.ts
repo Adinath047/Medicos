@@ -9,10 +9,31 @@ const BRAND = {
 };
 
 function openPrintWindow(html: string) {
-  const w = window.open('', '_blank', 'width=860,height=760,menubar=0,toolbar=0');
-  if (!w) { alert('Please allow pop-ups to print.'); return; }
-  w.document.write(html);
-  w.document.close();
+  // Remove any stale print frame from a previous call
+  const stale = document.getElementById('__medicos_print_frame__');
+  if (stale) stale.remove();
+
+  const iframe = document.createElement('iframe');
+  iframe.id = '__medicos_print_frame__';
+  iframe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;border:none;opacity:0;pointer-events:none;';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) { alert('Could not open print view. Please try again.'); return; }
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  // Wait for iframe content (fonts, images) to load before printing
+  iframe.onload = () => {
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      // Clean up after print dialog closes (generous timeout for slow dialogs)
+      setTimeout(() => iframe.remove(), 2000);
+    }, 150);
+  };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -152,7 +173,6 @@ export function printPrescriptionSlip(opts: {
     <div class="disclaimer">Computer-generated prescription. Valid only with doctor's signature &amp; stamp.</div>
   </div>
 </div>
-<script>window.onload = () => window.print();</script>
 </body></html>`);
 }
 
@@ -316,6 +336,5 @@ export function printInvoice(opts: {
 
   <div class="disclaimer">This is a computer-generated invoice. Thank you for choosing ${BRAND.name}.</div>
 </div>
-<script>window.onload = () => window.print();</script>
 </body></html>`);
 }
