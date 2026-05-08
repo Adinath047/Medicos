@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../api/client';
-import { db } from '../db/database';
+import { db } from '../db/localDB';
 import { useAuthStore } from '../store/authStore';
 
 export default function FrontDeskDashboard({ onNavigate }: { onNavigate: (p: string, d?: any) => void }) {
