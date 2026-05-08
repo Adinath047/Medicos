@@ -2,8 +2,10 @@
 const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const { v4: uuid } = require('uuid');
-const { query, queryOne, run } = require('../db/database');
+const { query, queryOne, run, auditLog } = require('../db/database');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+
+const ip = req => req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || null;
 
 const adminOnly = [authMiddleware, requireRole('admin')];
 
@@ -37,6 +39,7 @@ router.post('/', ...adminOnly, (req, res) => {
     [id, name.trim(), email.toLowerCase().trim(), hashed, role, req.user.hospitalId || 'hsp-001',
      specialization || null, phone || null, license_number || null]
   );
+  auditLog(req.user.id, 'CREATE_STAFF', 'users', id, { name: name.trim(), email: email.toLowerCase().trim(), role }, ip(req));
   res.status(201).json({ id, name: name.trim(), email: email.toLowerCase().trim(), role, specialization, phone, is_active: 1 });
 });
 
@@ -52,6 +55,7 @@ router.patch('/:id', ...adminOnly, (req, res) => {
     [name ?? user.name, specialization ?? user.specialization, phone ?? user.phone,
      license_number ?? user.license_number, is_active ?? user.is_active, req.params.id]
   );
+  auditLog(req.user.id, 'UPDATE_STAFF', 'users', req.params.id, { is_active }, ip(req));
   res.json({ success: true });
 });
 
@@ -63,6 +67,7 @@ router.post('/:id/reset-password', ...adminOnly, (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
   const hashed = bcrypt.hashSync(password, 10);
   run('UPDATE users SET password=? WHERE id=?', [hashed, req.params.id]);
+  auditLog(req.user.id, 'RESET_PASSWORD', 'users', req.params.id, {}, ip(req));
   res.json({ success: true });
 });
 

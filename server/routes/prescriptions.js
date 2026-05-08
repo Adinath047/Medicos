@@ -1,8 +1,10 @@
 // server/routes/prescriptions.js
 const router = require('express').Router();
 const { v4: uuid } = require('uuid');
-const { query, queryOne, run, parseJsonFields } = require('../db/database');
+const { query, queryOne, run, parseJsonFields, auditLog } = require('../db/database');
 const { authMiddleware } = require('../middleware/auth');
+
+const ip = req => req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || null;
 
 const parseRx = r => parseJsonFields(r, ['medicines']);
 
@@ -84,6 +86,8 @@ router.post('/', authMiddleware, (req, res) => {
      patient_weight||null, slipToken, req.user.role]
   );
 
+  auditLog(req.user.id, 'CREATE_PRESCRIPTION', 'prescriptions', id,
+    { patient_id, medicine_count: medicines.length }, ip(req));
   res.status(201).json(parseRx(queryOne('SELECT * FROM prescriptions WHERE id = ?', [id])));
 });
 
@@ -94,6 +98,7 @@ router.put('/:id', authMiddleware, (req, res) => {
     'UPDATE prescriptions SET medicines=?, advice=?, follow_up_date=?, patient_weight=?, is_printed=? WHERE id=?',
     [JSON.stringify(medicines||[]), advice||null, follow_up_date||null, patient_weight||null, is_printed||0, req.params.id]
   );
+  auditLog(req.user.id, 'UPDATE_PRESCRIPTION', 'prescriptions', req.params.id, { is_printed }, ip(req));
   res.json(parseRx(queryOne('SELECT * FROM prescriptions WHERE id = ?', [req.params.id])));
 });
 

@@ -1,8 +1,10 @@
 // server/routes/billing.js
 const router = require('express').Router();
 const { v4: uuid } = require('uuid');
-const { query, queryOne, run, parseJsonFields } = require('../db/database');
+const { query, queryOne, run, parseJsonFields, auditLog } = require('../db/database');
 const { authMiddleware } = require('../middleware/auth');
+
+const ip = req => req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || null;
 
 const parseBill = r => parseJsonFields(r, ['items']);
 
@@ -47,6 +49,8 @@ router.post('/', authMiddleware, (req, res) => {
      paid_amount, payment_mode, payStatus, invoiceNumber, notes||null, req.user.id]
   );
 
+  auditLog(req.user.id, 'CREATE_BILL', 'billing', id,
+    { patient_id, invoice_number: invoiceNumber, net_amount: net_amount||total_amount||0, payment_mode }, ip(req));
   res.status(201).json(parseBill(queryOne('SELECT * FROM billing WHERE id = ?', [id])));
 });
 
@@ -61,6 +65,8 @@ router.put('/:id/payment', authMiddleware, (req, res) => {
     'UPDATE billing SET paid_amount = ?, payment_mode = ?, payment_status = ? WHERE id = ?',
     [paid_amount, payment_mode || bill.payment_mode, payStatus, req.params.id]
   );
+  auditLog(req.user.id, 'UPDATE_PAYMENT', 'billing', req.params.id,
+    { paid_amount, payment_mode, payment_status: payStatus }, ip(req));
   res.json(parseBill(queryOne('SELECT * FROM billing WHERE id = ?', [req.params.id])));
 });
 

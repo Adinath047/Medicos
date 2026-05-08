@@ -1,8 +1,10 @@
 // server/routes/patients.js
 const router = require('express').Router();
 const { v4: uuid } = require('uuid');
-const { query, queryOne, run, transaction, parseJsonFields } = require('../db/database');
+const { query, queryOne, run, transaction, parseJsonFields, auditLog } = require('../db/database');
 const { authMiddleware } = require('../middleware/auth');
+
+const ip = req => req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || null;
 
 const JSON_FIELDS = ['allergies', 'chronic_conditions', 'current_medications'];
 
@@ -80,6 +82,7 @@ router.post('/', authMiddleware, (req, res) => {
      primary_doctor_id||null, notes||null, req.user.id]
   );
 
+  auditLog(req.user.id, 'CREATE_PATIENT', 'patients', id, { name, uhid }, ip(req));
   const created = queryOne('SELECT * FROM patients WHERE id = ?', [id]);
   res.status(201).json(parsePatient(created));
 });
@@ -118,12 +121,14 @@ router.put('/:id', authMiddleware, (req, res) => {
      primary_doctor_id||null, notes||null, req.params.id]
   );
 
+  auditLog(req.user.id, 'UPDATE_PATIENT', 'patients', req.params.id, { name }, ip(req));
   res.json(parsePatient(queryOne('SELECT * FROM patients WHERE id = ?', [req.params.id])));
 });
 
 // DELETE /api/patients/:id (soft delete)
 router.delete('/:id', authMiddleware, (req, res) => {
   run("UPDATE patients SET is_active = 0, updated_at = datetime('now') WHERE id = ?", [req.params.id]);
+  auditLog(req.user.id, 'DELETE_PATIENT', 'patients', req.params.id, {}, ip(req));
   res.json({ success: true });
 });
 

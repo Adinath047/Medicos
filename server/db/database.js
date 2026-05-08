@@ -104,4 +104,33 @@ function parseJsonFields(row, fields) {
   return out;
 }
 
-module.exports = { getDB, query, queryOne, run, transaction, parseJsonFields };
+/**
+ * Write one row to audit_log.
+ * Fire-and-forget: never throws so a logging failure cannot break a clinical operation.
+ * @param {string} userId       - acting user's ID
+ * @param {string} action       - e.g. 'CREATE_PATIENT', 'UPDATE_PRESCRIPTION'
+ * @param {string} tableName    - DB table affected
+ * @param {string} recordId     - primary key of the affected record
+ * @param {object} details      - any extra context (stored as JSON)
+ * @param {string} [ipAddress]  - request IP
+ */
+function auditLog(userId, action, tableName, recordId, details = {}, ipAddress = null) {
+  try {
+    getDB().prepare(
+      `INSERT INTO audit_log (user_id, action, table_name, record_id, details, ip_address)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(
+      userId || 'unknown',
+      action,
+      tableName || null,
+      String(recordId || ''),
+      JSON.stringify(details),
+      ipAddress || null
+    );
+  } catch (err) {
+    // Log to console only — never propagate
+    console.error('[audit] Failed to write audit log:', err.message);
+  }
+}
+
+module.exports = { getDB, query, queryOne, run, transaction, parseJsonFields, auditLog };

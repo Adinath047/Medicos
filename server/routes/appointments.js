@@ -1,8 +1,10 @@
 // server/routes/appointments.js
 const router = require('express').Router();
 const { v4: uuid } = require('uuid');
-const { query, queryOne, run } = require('../db/database');
+const { query, queryOne, run, auditLog } = require('../db/database');
 const { authMiddleware } = require('../middleware/auth');
+
+const ip = req => req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || null;
 
 // GET /api/appointments?date=&doctor_id=&patient_id=&status=
 router.get('/', authMiddleware, (req, res) => {
@@ -66,6 +68,7 @@ router.post('/', authMiddleware, (req, res) => {
     [id, hospitalId, patient_id, doctor_id, date, time, tokenCount + 1, reason||null, notes||null, req.user.id]
   );
 
+  auditLog(req.user.id, 'CREATE_APPOINTMENT', 'appointments', id, { patient_id, doctor_id, date, time }, ip(req));
   res.status(201).json(queryOne('SELECT * FROM appointments WHERE id = ?', [id]));
 });
 
@@ -76,12 +79,14 @@ router.put('/:id/status', authMiddleware, (req, res) => {
   if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status' });
 
   run("UPDATE appointments SET status = ?, updated_at = datetime('now') WHERE id = ?", [status, req.params.id]);
+  auditLog(req.user.id, 'UPDATE_APPOINTMENT_STATUS', 'appointments', req.params.id, { status }, ip(req));
   res.json(queryOne('SELECT * FROM appointments WHERE id = ?', [req.params.id]));
 });
 
 // DELETE /api/appointments/:id
 router.delete('/:id', authMiddleware, (req, res) => {
   run("UPDATE appointments SET status = 'Cancelled', updated_at = datetime('now') WHERE id = ?", [req.params.id]);
+  auditLog(req.user.id, 'CANCEL_APPOINTMENT', 'appointments', req.params.id, {}, ip(req));
   res.json({ success: true });
 });
 

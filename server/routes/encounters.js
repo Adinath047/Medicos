@@ -1,8 +1,10 @@
 // server/routes/encounters.js
 const router = require('express').Router();
 const { v4: uuid } = require('uuid');
-const { query, queryOne, run, parseJsonFields } = require('../db/database');
+const { query, queryOne, run, parseJsonFields, auditLog } = require('../db/database');
 const { authMiddleware } = require('../middleware/auth');
+
+const ip = req => req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || null;
 
 const parseEnc = r => parseJsonFields(r, ['diagnosis']);
 
@@ -78,6 +80,7 @@ router.post('/', authMiddleware, (req, res) => {
   // Update patient last visit
   run("UPDATE patients SET updated_at = datetime('now') WHERE id = ?", [patient_id]);
 
+  auditLog(req.user.id, 'CREATE_ENCOUNTER', 'encounters', id, { patient_id, encounter_type, doctor_id: docId }, ip(req));
   res.status(201).json(parseEnc(queryOne('SELECT * FROM encounters WHERE id = ?', [id])));
 });
 
@@ -105,12 +108,14 @@ router.put('/:id', authMiddleware, (req, res) => {
      req.params.id]
   );
 
+  auditLog(req.user.id, 'UPDATE_ENCOUNTER', 'encounters', req.params.id, { status }, ip(req));
   res.json(parseEnc(queryOne('SELECT * FROM encounters WHERE id = ?', [req.params.id])));
 });
 
 // DELETE /api/encounters/:id
 router.delete('/:id', authMiddleware, (req, res) => {
   run("UPDATE encounters SET status = 'Cancelled', updated_at = datetime('now') WHERE id = ?", [req.params.id]);
+  auditLog(req.user.id, 'CANCEL_ENCOUNTER', 'encounters', req.params.id, {}, ip(req));
   res.json({ success: true });
 });
 

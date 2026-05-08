@@ -1,8 +1,10 @@
 // server/routes/vitals.js
 const router = require('express').Router();
 const { v4: uuid } = require('uuid');
-const { query, queryOne, run } = require('../db/database');
+const { query, queryOne, run, auditLog } = require('../db/database');
 const { authMiddleware } = require('../middleware/auth');
+
+const ip = req => req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || null;
 
 // GET /api/vitals?patient_id=&encounter_id=
 router.get('/', authMiddleware, (req, res) => {
@@ -67,6 +69,7 @@ router.post('/', authMiddleware, (req, res) => {
   // Update patient weight/height
   if (weight) run('UPDATE patients SET weight = ?, updated_at = datetime(\'now\') WHERE id = ?', [weight + weight_unit, patient_id]);
 
+  auditLog(req.user.id, 'RECORD_VITALS', 'vitals', id, { patient_id, encounter_id: encounter_id||null }, ip(req));
   res.status(201).json(queryOne('SELECT * FROM vitals WHERE id = ?', [id]));
 });
 
