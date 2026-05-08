@@ -52,6 +52,39 @@ export function printPrescriptionSlip(opts: {
   const date = new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
   const time = new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
 
+  // Inline helpers (mirroring PrescriptionPage logic) for print context
+  function _freqPerDay(freq: string): number | null {
+    const f = freq.toLowerCase();
+    if (f.includes('once') || f === 'at bedtime' || f.includes('morning')) return 1;
+    if (f.includes('twice'))  return 2;
+    if (f.includes('thrice') || f.includes('three') || f.includes('every 8h')) return 3;
+    if (f.includes('every 6h'))  return 4;
+    if (f.includes('weekly'))    return 1 / 7;
+    if (f.includes('as needed')) return null;
+    if (f.includes('meals'))     return 3;
+    return null;
+  }
+  function _durDays(dur: string): number | null {
+    const d = dur.toLowerCase();
+    if (d === 'ongoing') return null;
+    const mm = d.match(/(\d+)\s*month/); if (mm) return parseInt(mm[1]) * 30;
+    const dm = d.match(/(\d+)\s*day/);   if (dm) return parseInt(dm[1]);
+    return null;
+  }
+  function _doseQty(dose: string): number | null {
+    const frac = dose.toLowerCase().replace('\u00bd', '.5').replace('\u00bc', '.25').replace('\u00be', '.75');
+    const m = frac.match(/([\d.]+)/); if (!m) return null;
+    const n = parseFloat(m[1]); return (isNaN(n) || n <= 0) ? null : n;
+  }
+  function _totalQty(dose: string, freq: string, dur: string): string {
+    const u = _doseQty(dose), f = _freqPerDay(freq), d = _durDays(dur);
+    if (u === null || f === null || d === null) return '—';
+    const qty = Math.ceil(u * f * d);
+    const dl = dose.toLowerCase();
+    const unit = dl.includes('capsule') ? 'capsule' : dl.includes('ml') ? 'ml' : dl.includes('drop') ? 'drop' : 'tablet';
+    return `${qty} ${qty !== 1 ? unit + 's' : unit}`;
+  }
+
   const medRows = medicines.map((m, i) => `
     <tr class="${i % 2 === 0 ? 'row-even' : ''}">
       <td class="num">${i + 1}</td>
@@ -59,6 +92,7 @@ export function printPrescriptionSlip(opts: {
       <td>${m.dose}</td>
       <td>${m.frequency}</td>
       <td>${m.duration}</td>
+      <td class="qty">${_totalQty(m.dose, m.frequency, m.duration)}</td>
       <td class="note">${m.instructions || '—'}</td>
     </tr>`).join('');
 
@@ -98,8 +132,10 @@ export function printPrescriptionSlip(opts: {
   tbody td { padding:7px 10px; border-bottom:1px solid #f1f5f9; vertical-align:top; }
   tbody .row-even td { background:#f8fafc; }
   .strength { font-size:11px; color:#3b82f6; font-weight:600; }
-  .note { font-style:italic; color:#64748b; font-size:11.5px; }
-  .num { text-align:center; color:#94a3b8; font-weight:700; }
+  .note  { font-style:italic; color:#64748b; font-size:11.5px; }
+  .num   { text-align:center; color:#94a3b8; font-weight:700; }
+  .qty   { font-weight:800; color:#15803d; font-family:monospace; font-size:12px; white-space:nowrap; }
+  .qty-h { white-space:nowrap; }
 
   /* Advice */
   .advice-box { margin:12px 0; background:#fffbeb; border:1px solid #fcd34d; border-left:4px solid #f59e0b; border-radius:6px; padding:10px 14px; }
@@ -149,7 +185,7 @@ export function printPrescriptionSlip(opts: {
 
   <table>
     <thead><tr>
-      <th class="num">#</th><th>Medicine</th><th>Dose</th><th>Frequency</th><th>Duration</th><th>Notes</th>
+      <th class="num">#</th><th>Medicine</th><th>Dose</th><th>Frequency</th><th>Duration</th><th class="qty-h">Total Qty</th><th>Notes</th>
     </tr></thead>
     <tbody>${medRows}</tbody>
   </table>
