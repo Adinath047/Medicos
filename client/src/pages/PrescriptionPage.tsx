@@ -46,6 +46,57 @@ const DUR  = ['1 day','3 days','5 days','7 days','10 days','14 days','1 month','
 const INST = ['After meals','Before meals','With meals','Empty stomach','At bedtime','In the morning','With warm water','With milk','Dissolve in water','As directed','Avoid in pregnancy','Avoid alcohol'];
 const EMPTY_MED = { name:'', strength:'', dose:'1 tablet', frequency:'Once daily', duration:'7 days', instructions:'After meals' };
 
+// ── Tablet quantity calculator ─────────────────────────────────────────
+/** How many times per day is a given frequency? */
+function freqPerDay(freq: string): number | null {
+  const f = freq.toLowerCase();
+  if (f.includes('once') || f === 'at bedtime' || f.includes('morning')) return 1;
+  if (f.includes('twice'))  return 2;
+  if (f.includes('thrice') || f.includes('three')) return 3;
+  if (f.includes('every 8h'))  return 3;
+  if (f.includes('every 6h'))  return 4;
+  if (f.includes('weekly'))    return 1 / 7;
+  if (f.includes('as needed')) return null; // can't compute
+  if (f.includes('before meals') || f.includes('after meals') || f.includes('with meals')) return 3; // assume 3 meals
+  return null;
+}
+
+/** How many days does a duration string represent? */
+function durationDays(dur: string): number | null {
+  const d = dur.toLowerCase();
+  if (d === 'ongoing') return null;
+  const monthMatch = d.match(/(\d+)\s*month/);
+  if (monthMatch) return parseInt(monthMatch[1]) * 30;
+  const dayMatch = d.match(/(\d+)\s*day/);
+  if (dayMatch) return parseInt(dayMatch[1]);
+  return null;
+}
+
+/** How many units per dose (e.g. "1 tablet" → 1, "1½" → 1.5, "2 tablets" → 2) */
+function doseUnits(dose: string): number | null {
+  const d = dose.toLowerCase();
+  // fractions like 1½, ½
+  const frac = d.replace('½', '.5').replace('¼', '.25').replace('¾', '.75');
+  const match = frac.match(/([\d.]+)/);
+  if (!match) return null;
+  const n = parseFloat(match[1]);
+  return isNaN(n) || n <= 0 ? null : n;
+}
+
+/** Returns a display string for total tablets/units, or null if not computable */
+function calcTotalQty(dose: string, freq: string, dur: string): { qty: number; label: string } | null {
+  const units = doseUnits(dose);
+  const fpd   = freqPerDay(freq);
+  const days  = durationDays(dur);
+  if (units === null || fpd === null || days === null) return null;
+  const qty = Math.ceil(units * fpd * days);
+  // Detect unit type from dose string
+  const d = dose.toLowerCase();
+  const unit = d.includes('capsule') ? 'capsule' : d.includes('ml') ? 'ml' : d.includes('drop') ? 'drops' : 'tablet';
+  const plural = qty !== 1 ? `${unit}s` : unit;
+  return { qty, label: `${qty} ${plural}` };
+}
+
 // Popular drugs shown when field is focused but empty
 const POPULAR = ['Paracetamol','Amoxicillin','Azithromycin','Pantoprazole','Metformin','Amlodipine','Cetirizine','Ibuprofen','Atorvastatin','Omeprazole'];
 
@@ -318,6 +369,38 @@ function MedRow({ med, index, onUpdate, onDelete, canDelete, patientAllergies }:
           </select>
         </div>
       </div>
+
+      {/* Total quantity calculation */}
+      {(() => {
+        const result = calcTotalQty(med.dose, med.frequency, med.duration);
+        return (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '7px 12px', borderRadius: 8,
+            background: result ? '#f0fdf4' : '#f8fafc',
+            border: `1px solid ${result ? '#86efac' : '#e2e8f0'}`,
+          }}>
+            <span style={{ fontSize: 13 }}>🧮</span>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Total quantity to dispense:
+            </span>
+            {result ? (
+              <strong style={{ fontSize: 13, color: '#15803d', fontFamily: 'monospace' }}>
+                {result.label}
+              </strong>
+            ) : (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                — (set dose, frequency &amp; duration to auto-calculate)
+              </span>
+            )}
+            {result && (
+              <span style={{ fontSize: 10, color: '#6b7280', marginLeft: 'auto' }}>
+                {med.dose} × {freqPerDay(med.frequency)}×/day × {durationDays(med.duration)} days
+              </span>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
