@@ -25,6 +25,8 @@ export default function BillingPage({ onNavigate }: { onNavigate:(p:string,d?:an
   const [notes, setNotes]       = useState('');
   const [saving, setSaving]     = useState(false);
   const [filter, setFilter]     = useState('All');
+  const [doctorInfo, setDoctorInfo] = useState<any>(null);  // auto-filled from encounter
+  const [fetchingDoctor, setFetchingDoctor] = useState(false);
 
   const total    = items.reduce((s,i)=>s+(i.quantity*i.unit_price),0);
   const net      = Math.max(0, total - parseFloat(discount||'0'));
@@ -44,6 +46,40 @@ export default function BillingPage({ onNavigate }: { onNavigate:(p:string,d?:an
     })();
   },[]);
 
+  // When patient changes, look up their latest encounter → doctor → auto-fill fee
+  useEffect(() => {
+    if (!patientId) { setDoctorInfo(null); return; }
+    (async () => {
+      setFetchingDoctor(true);
+      try {
+        // Get latest encounter for this patient
+        const encRes = await apiClient.get('/encounters', { params: { patient_id: patientId, limit: 1 } });
+        const enc = Array.isArray(encRes.data) ? encRes.data[0] : encRes.data?.encounters?.[0];
+        if (!enc?.doctor_id) { setDoctorInfo(null); return; }
+
+        // Get doctor details (includes consultation_fee)
+        const usersRes = await apiClient.get('/users');
+        const doctor = usersRes.data.users?.find((u: any) => u.id === enc.doctor_id);
+        if (!doctor) { setDoctorInfo(null); return; }
+
+        setDoctorInfo(doctor);
+        // Pre-fill first line item with doctor's consultation fee
+        if (doctor.consultation_fee > 0) {
+          setItems([{
+            description: `Consultation Fee — Dr. ${doctor.name}`,
+            quantity: 1,
+            unit_price: doctor.consultation_fee,
+            amount: doctor.consultation_fee,
+          }]);
+        }
+      } catch {
+        setDoctorInfo(null);
+      } finally {
+        setFetchingDoctor(false);
+      }
+    })();
+  }, [patientId]);
+
   async function submit(e:React.FormEvent){
     e.preventDefault();
     if(!patientId) return;
@@ -56,10 +92,16 @@ export default function BillingPage({ onNavigate }: { onNavigate:(p:string,d?:an
       paid_amount:paid, payment_mode:payMode,
       payment_status: paid>=net?'Paid':paid>0?'Partial':'Pending',
       notes:notes||null, billed_by:user?.id, created_at:now,
+      bill_type: 'consultation',
+      doctor_id: doctorInfo?.id || null,
     };
     try { const r=await apiClient.post('/billing',payload); setBills(b=>[r.data,...b]); }
     catch { await markPending(db.billing,payload,'create'); await db.billing.put(payload); setBills(b=>[payload,...b]); }
-    finally { setSaving(false); setShowAdd(false); setItems([{...EMPTY_ITEM}]); setPatientId(''); setPaid(''); }
+    finally {
+      setSaving(false); setShowAdd(false);
+      setItems([{...EMPTY_ITEM}]); setPatientId(''); setPaid('');
+      setDoctorInfo(null);
+    }
   }
 
   const filtered = filter==='All' ? bills : bills.filter(b=>b.payment_status===filter);
@@ -92,6 +134,31 @@ export default function BillingPage({ onNavigate }: { onNavigate:(p:string,d?:an
                     <option value="">— Select —</option>
                     {patients.map(p=><option key={p.id} value={p.id}>{p.name} ({p.uhid})</option>)}
                   </select>
+                  {fetchingDoctor && (
+                    <div style={{display:'flex',alignItems:'center',gap:6,marginTop:6,fontSize:12,color:'var(--text-muted)'}}>
+                      <div className="spinner spinner-sm"/> Looking up doctor fee…
+                    </div>
+                  )}
+                  {doctorInfo && !fetchingDoctor && (
+                    <div style={{
+                      marginTop:8, padding:'8px 12px', borderRadius:8,
+                      background:'#f0fdf4', border:'1px solid #86efac',
+                      display:'flex', alignItems:'center', gap:10, fontSize:12,
+                    }}>
+                      <span>👨‍⚕️</span>
+                      <div>
+                        <div style={{fontWeight:700,color:'#15803d'}}>Dr. {doctorInfo.name}</div>
+                        <div style={{color:'#64748b'}}>
+                          OPD Fee auto-filled: <strong>₹{doctorInfo.consultation_fee}</strong>
+                          {doctorInfo.followup_fee > 0 && ` · Follow-up: ₹${doctorInfo.followup_fee}`}
+                        </div>
+                      </div>
+                      <button type="button" style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'#94a3b8',fontSize:12}}
+                        onClick={()=>{setDoctorInfo(null);setItems([{...EMPTY_ITEM}]);}}>
+                        ✕ Clear
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Items */}
