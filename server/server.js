@@ -11,15 +11,42 @@ const app  = express();
 const PORT = process.env.PORT || 4000;
 
 // ── Security & compression ─────────────────────────────────────────────────
-app.use(helmet({ contentSecurityPolicy: false }));
+app.set('trust proxy', 1); // Trust first proxy (Railway/Render) to get correct req.ip
+
+// Disable X-Powered-By header (Helmet handles this, but good to be explicit)
+app.disable('x-powered-by');
+
+// Add secure HTTP headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
+}));
+
 app.use(compression());
+
+// Restrict CORS
 app.use(cors({
   origin: process.env.CLIENT_ORIGIN || '*',
-  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization'],
 }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+
+// Global Rate Limiting to prevent DDoS
+const rateLimit = require('express-rate-limit');
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 300, // 300 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' }
+});
+
+// Apply global rate limiting to all /api routes
+app.use('/api', apiLimiter);
+
+// Payload limits to prevent large payload attacks
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // ── Request logger (dev only) ─────────────────────────────────────────────
 if (process.env.NODE_ENV !== 'production') {

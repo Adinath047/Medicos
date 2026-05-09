@@ -44,20 +44,22 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch { /* server offline — fall through to demo mode */ }
 
     // ── Offline demo fallback (built-in accounts) ─────────────────────
-    const DEMO_USERS: Record<string, AuthUser & { password: string }> = {
-      'admin@medicos.local':     { id:'usr-admin-001', name:'System Admin',    email:'admin@medicos.local',     role:'admin',        hospitalId:'hsp-001', password:'Admin@123' },
-      'dr.sharma@medicos.local': { id:'usr-doc-001',   name:'Dr. Priya Sharma',email:'dr.sharma@medicos.local', role:'doctor',       hospitalId:'hsp-001', password:'Doctor@123' },
-      'reception@medicos.local': { id:'usr-rcpt-001',  name:'Anita Patel',     email:'reception@medicos.local', role:'receptionist', hospitalId:'hsp-001', password:'Recept@123' },
-    };
+    if (import.meta.env.DEV) {
+      const DEMO_USERS: Record<string, AuthUser & { password: string }> = {
+        'admin@medicos.local':     { id:'usr-admin-001', name:'System Admin',    email:'admin@medicos.local',     role:'admin',        hospitalId:'hsp-001', password:'Admin@123' },
+        'dr.sharma@medicos.local': { id:'usr-doc-001',   name:'Dr. Priya Sharma',email:'dr.sharma@medicos.local', role:'doctor',       hospitalId:'hsp-001', password:'Doctor@123' },
+        'reception@medicos.local': { id:'usr-rcpt-001',  name:'Anita Patel',     email:'reception@medicos.local', role:'receptionist', hospitalId:'hsp-001', password:'Recept@123' },
+      };
 
-    const demo = DEMO_USERS[email.toLowerCase().trim()];
-    if (demo && demo.password === password) {
-      const { password: _, ...user } = demo;
-      const fakeToken = 'offline-demo-token';
-      localStorage.setItem('emr_token', fakeToken);
-      localStorage.setItem('emr_user', JSON.stringify(user));
-      set({ user, token: fakeToken });
-      return true;
+      const demo = DEMO_USERS[email.toLowerCase().trim()];
+      if (demo && demo.password === password) {
+        const { password: _, ...user } = demo;
+        const fakeToken = 'offline-demo-token';
+        localStorage.setItem('emr_token', fakeToken);
+        localStorage.setItem('emr_user', JSON.stringify(user));
+        set({ user, token: fakeToken });
+        return true;
+      }
     }
 
     return false;

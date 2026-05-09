@@ -155,24 +155,40 @@ async function pushToCloud() {
   for (const { name, ts } of SYNC_TABLES) {
     try {
       const meta = queryOne("SELECT value FROM sync_meta WHERE key = ?", [`last_push_${name}`]);
-      const since = meta?.value ?? '2000-01-01T00:00:00.000Z';
+      let since = meta?.value ?? '2000-01-01T00:00:00.000Z';
 
-      let rows;
-      try { rows = query(`SELECT * FROM ${name} WHERE ${ts} > ?`, [since]); }
-      catch { continue; }
+      let hasMore = true;
+      while (hasMore) {
+        let rows;
+        try { 
+          rows = query(`SELECT * FROM ${name} WHERE ${ts} > ? ORDER BY ${ts} ASC LIMIT 500`, [since]); 
+        } catch { break; }
 
-      if (!rows.length) continue;
+        if (!rows || rows.length === 0) {
+          hasMore = false;
+          continue;
+        }
 
-      // Upsert in batches of 50
-      for (let i = 0; i < rows.length; i += 50) {
-        const batch = rows.slice(i, i + 50);
-        const { error } = await supabase.from(name).upsert(batch, { onConflict: 'id' });
-        if (!error) pushed += batch.length;
-        else console.warn(`☁  Push error (${name}):`, error.message);
+        // Upsert in batches of 50 to Supabase
+        for (let i = 0; i < rows.length; i += 50) {
+          const batch = rows.slice(i, i + 50);
+          const { error } = await supabase.from(name).upsert(batch, { onConflict: 'id' });
+          if (!error) pushed += batch.length;
+          else {
+            console.warn(`☁  Push error (${name}):`, error.message);
+            hasMore = false; // Stop on error
+            break;
+          }
+        }
+        
+        if (!hasMore && rows.length > 0) break; // Error occurred, break outer loop
+
+        // Safely update sync_meta with the highest timestamp from this batch
+        since = rows[rows.length - 1][ts];
+        run("INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?)", [`last_push_${name}`, since]);
+
+        if (rows.length < 500) hasMore = false;
       }
-
-      run("INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?)",
-        [`last_push_${name}`, new Date().toISOString()]);
     } catch (err) {
       console.warn(`☁  Push error (${name}):`, err.message);
     }
@@ -190,31 +206,40 @@ async function pullFromCloud() {
   for (const { name, ts } of SYNC_TABLES) {
     try {
       const meta = queryOne("SELECT value FROM sync_meta WHERE key = ?", [`last_pull_${name}`]);
-      const since = meta?.value ?? '2000-01-01T00:00:00.000Z';
+      let since = meta?.value ?? '2000-01-01T00:00:00.000Z';
 
-      const { data: rows, error } = await supabase
-        .from(name).select('*').gt(ts, since).order(ts).limit(500);
+      let hasMore = true;
+      while (hasMore) {
+        const { data: rows, error } = await supabase
+          .from(name).select('*').gt(ts, since).order(ts, { ascending: true }).limit(500);
 
-      if (error) { console.warn(`☁  Pull error (${name}):`, error.message); continue; }
-      if (!rows?.length) continue;
+        if (error) { console.warn(`☁  Pull error (${name}):`, error.message); break; }
+        if (!rows || rows.length === 0) {
+          hasMore = false;
+          continue;
+        }
 
-      for (const row of rows) {
-        try {
-          const cols = Object.keys(row).filter(k => row[k] !== null && row[k] !== undefined);
-          if (!cols.length) continue;
-          const placeholders = cols.map(() => '?').join(',');
-          const updates = cols.filter(c => c !== 'id').map(c => `${c} = excluded.${c}`);
-          run(
-            `INSERT INTO ${name} (${cols.join(',')}) VALUES (${placeholders})
-             ON CONFLICT(id) DO UPDATE SET ${updates.join(', ')}`,
-            cols.map(c => row[c])
-          );
-          pulled++;
-        } catch { /* skip bad rows */ }
+        for (const row of rows) {
+          try {
+            const cols = Object.keys(row).filter(k => row[k] !== null && row[k] !== undefined);
+            if (!cols.length) continue;
+            const placeholders = cols.map(() => '?').join(',');
+            const updates = cols.filter(c => c !== 'id').map(c => `${c} = excluded.${c}`);
+            run(
+              `INSERT INTO ${name} (${cols.join(',')}) VALUES (${placeholders})
+               ON CONFLICT(id) DO UPDATE SET ${updates.join(', ')}`,
+              cols.map(c => row[c])
+            );
+            pulled++;
+          } catch { /* skip bad rows */ }
+        }
+
+        // Safely update sync_meta with the highest timestamp from this batch
+        since = rows[rows.length - 1][ts];
+        run("INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?)", [`last_pull_${name}`, since]);
+
+        if (rows.length < 500) hasMore = false;
       }
-
-      run("INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?)",
-        [`last_pull_${name}`, new Date().toISOString()]);
     } catch (err) {
       console.warn(`☁  Pull error (${name}):`, err.message);
     }

@@ -97,14 +97,16 @@ export default function AppointmentsPage({ onNavigate }: { onNavigate:(p:string,
         </div>
         <div style={{display:'flex',gap:10,alignItems:'center'}}>
           <input className="input" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:'auto'}} />
-          <button className="btn btn-primary" onClick={()=>setShowAdd(true)}>+ Book</button>
+          {user?.role !== 'doctor' && (
+            <button className="btn btn-primary" onClick={()=>setShowAdd(true)}>+ Book</button>
+          )}
         </div>
       </div>
 
       {loading
         ? <div style={{padding:48,textAlign:'center'}}><div className="spinner" style={{margin:'0 auto'}}/></div>
         : appts.length === 0
-          ? <div className="card"><div className="empty-state"><span className="empty-icon">📅</span><h3>No appointments</h3><button className="btn btn-primary" style={{marginTop:8}} onClick={()=>setShowAdd(true)}>+ Book First</button></div></div>
+          ? <div className="card"><div className="empty-state"><span className="empty-icon">📅</span><h3>No appointments</h3>{user?.role !== 'doctor' && <button className="btn btn-primary" style={{marginTop:8}} onClick={()=>setShowAdd(true)}>+ Book First</button>}</div></div>
           : Object.entries(grouped).map(([doc,list]:any)=>(
               <div key={doc} className="card">
                 <div className="card-header"><div className="card-title">👨‍⚕️ {doc}</div><span className="badge badge-info">{list.length}</span></div>

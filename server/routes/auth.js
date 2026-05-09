@@ -26,8 +26,7 @@ router.post('/login', loginLimiter, (req, res) => {
   const user = queryOne('SELECT * FROM users WHERE email = ? AND is_active = 1', [email.toLowerCase().trim()]);
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-  const match = bcrypt.compareSync(password, user.password) ||
-    (process.env.NODE_ENV !== 'production' && ['Admin@123','Doctor@123','Recept@123','Pharma@123'].includes(password));
+  const match = bcrypt.compareSync(password, user.password);
 
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
 

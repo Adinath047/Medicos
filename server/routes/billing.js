@@ -4,7 +4,7 @@ const { v4: uuid } = require('uuid');
 const { query, queryOne, run, parseJsonFields, auditLog } = require('../db/database');
 const { authMiddleware } = require('../middleware/auth');
 
-const ip = req => req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || null;
+const ip = req => req.ip || null;
 
 const parseBill = r => parseJsonFields(r, ['items']);
 
