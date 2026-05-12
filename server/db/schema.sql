@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS patients (
   blood_group             TEXT,
   phone                   TEXT,
   email                   TEXT,
+  password                TEXT,
   address                 TEXT,
   weight                  TEXT,
   height                  TEXT,
@@ -194,6 +195,21 @@ CREATE TABLE IF NOT EXISTS lab_orders (
   FOREIGN KEY (doctor_id)    REFERENCES users(id),
   FOREIGN KEY (encounter_id) REFERENCES encounters(id)
 );
+
+-- ── PATIENT UPLOADS (Test Results, Scans, etc) ─────────────────────────
+CREATE TABLE IF NOT EXISTS patient_uploads (
+  id            TEXT PRIMARY KEY,
+  patient_id    TEXT NOT NULL,
+  hospital_id   TEXT NOT NULL,
+  title         TEXT NOT NULL,
+  file_url      TEXT NOT NULL,
+  file_type     TEXT,
+  notes         TEXT,
+  uploaded_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (patient_id)  REFERENCES patients(id),
+  FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+);
+CREATE INDEX IF NOT EXISTS idx_puploads_patient ON patient_uploads(patient_id);
 
 -- ── APPOINTMENTS ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS appointments (

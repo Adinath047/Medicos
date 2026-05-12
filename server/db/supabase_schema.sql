@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS patients (
   blood_group             TEXT,
   phone                   TEXT,
   email                   TEXT,
+  password                TEXT,
   address                 TEXT,
   weight                  TEXT,
   height                  TEXT,
@@ -141,6 +142,18 @@ CREATE TABLE IF NOT EXISTS prescriptions (
   is_printed       INTEGER DEFAULT 0,
   created_by_role  TEXT DEFAULT 'doctor',
   created_at       TEXT NOT NULL DEFAULT (now()::text)
+);
+
+-- ── PATIENT UPLOADS ───────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS patient_uploads (
+  id            TEXT PRIMARY KEY,
+  patient_id    TEXT NOT NULL,
+  hospital_id   TEXT NOT NULL,
+  title         TEXT NOT NULL,
+  file_url      TEXT NOT NULL,
+  file_type     TEXT,
+  notes         TEXT,
+  uploaded_at   TEXT NOT NULL DEFAULT (now()::text)
 );
 
 -- ── APPOINTMENTS ──────────────────────────────────────────────────────

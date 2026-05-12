@@ -62,6 +62,33 @@ router.post('/register', async (req, res) => {
   res.status(201).json({ id, name, email, role: role || 'doctor' });
 });
 
+// POST /api/auth/patient/login
+router.post('/patient/login', loginLimiter, (req, res) => {
+  const { identifier, password } = req.body; // identifier can be uhid or phone
+  if (!identifier || !password) return res.status(400).json({ error: 'identifier and password required' });
+
+  // search by uhid or phone
+  const patient = queryOne('SELECT * FROM patients WHERE (uhid = ? OR phone = ?) AND is_active = 1', [identifier, identifier]);
+  if (!patient) return res.status(401).json({ error: 'Invalid credentials' });
+
+  // If patient hasn't set a password yet, we might want to check that too
+  if (!patient.password) return res.status(401).json({ error: 'Password not set for this account' });
+
+  const match = bcrypt.compareSync(password, patient.password);
+  if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+
+  const payload = {
+    id: patient.id,
+    uhid: patient.uhid,
+    name: patient.name,
+    role: 'patient',
+    hospitalId: patient.hospital_id
+  };
+
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' }); // Longer session for patients
+  res.json({ token, user: payload, expiresIn: 604800 });
+});
+
 // GET /api/auth/me — verify token
 router.get('/me', (req, res) => {
   const header = req.headers['authorization'];

@@ -66,6 +66,7 @@ app.use('/api/prescriptions', require('./routes/prescriptions'));
 app.use('/api/appointments',  require('./routes/appointments'));
 app.use('/api/billing',       require('./routes/billing'));
 app.use('/api/pharmacy',      require('./routes/pharmacy'));
+app.use('/api/patient-uploads', require('./routes/patient_uploads'));
 app.use('/api/sync',          require('./routes/sync'));
 
 // ── Dashboard stats ───────────────────────────────────────────────────────

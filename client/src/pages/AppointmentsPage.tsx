@@ -18,6 +18,9 @@ export default function AppointmentsPage({ onNavigate }: { onNavigate:(p:string,
   const [showAdd, setShowAdd]   = useState(false);
   const [loading, setLoading]   = useState(true);
   const [form, setForm] = useState({ patient_id:'', doctor_id:'', date:today(), time:'09:00', reason:'' });
+  const [isNewPatient, setIsNewPatient] = useState(false);
+  const [newPatient, setNewPatient] = useState<{name:string; phone:string; sex:'Male'|'Female'|'Other'}>({ name: '', phone: '', sex: 'Male' });
+  const [patientSearch, setPatientSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const set = (k:string, v:string) => setForm(f=>({...f,[k]:v}));
 
@@ -42,12 +45,31 @@ export default function AppointmentsPage({ onNavigate }: { onNavigate:(p:string,
   async function bookAppt(e:React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+    
+    let finalPatientId = form.patient_id;
+    if (isNewPatient) {
+      try {
+        const pRes = await apiClient.post('/patients', newPatient);
+        finalPatientId = pRes.data.id;
+        setPatients(p => [...p, pRes.data]);
+      } catch {
+        const pId = uuid();
+        const payload = { id: pId, uhid: 'UHID-001-' + Math.floor(Math.random()*1000000), hospital_id: user?.hospitalId||'hsp-001', ...newPatient, allergies: [], chronic_conditions: [], current_medications: [], is_active: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+        await markPending(db.patients, payload, 'create');
+        await db.patients.put(payload);
+        finalPatientId = pId;
+        setPatients(p => [...p, payload]);
+      }
+    }
+
     const id = uuid(); const now = new Date().toISOString();
-    const payload: any = { id, hospital_id: user?.hospitalId||'hsp-001', ...form, doctor_id: form.doctor_id||user?.id, status:'Scheduled', token_number: appts.length+1, created_at:now, updated_at:now };
+    const payload: any = { id, hospital_id: user?.hospitalId||'hsp-001', ...form, patient_id: finalPatientId, doctor_id: form.doctor_id||user?.id, status:'Scheduled', token_number: appts.length+1, created_at:now, updated_at:now };
     try { const r = await apiClient.post('/appointments', payload); setAppts(a=>[...a,r.data]); }
     catch { await markPending(db.appointments, payload,'create'); await db.appointments.put(payload); setAppts(a=>[...a,payload]); }
-    finally { setSaving(false); setShowAdd(false); }
+    finally { setSaving(false); setShowAdd(false); setIsNewPatient(false); }
   }
+
+  const filteredPatients = patients.filter(p => !patientSearch || p.name?.toLowerCase().includes(patientSearch.toLowerCase()) || p.phone?.includes(patientSearch) || p.uhid?.includes(patientSearch));
 
   async function updateStatus(id:string, status:string) {
     try { const r = await apiClient.put(`/appointments/${id}/status`,{status}); setAppts(a=>a.map(x=>x.id===id?r.data:x)); }
@@ -64,13 +86,30 @@ export default function AppointmentsPage({ onNavigate }: { onNavigate:(p:string,
             <div className="modal-header"><div className="modal-title">📅 Book Appointment</div><button className="modal-close" onClick={()=>setShowAdd(false)}>✕</button></div>
             <form onSubmit={bookAppt}>
               <div className="modal-body">
-                <div className="form-group">
-                  <label className="form-label">Patient *</label>
-                  <select className="input" value={form.patient_id} onChange={e=>set('patient_id',e.target.value)} required>
-                    <option value="">— Select —</option>
-                    {patients.map(p=><option key={p.id} value={p.id}>{p.name} ({p.uhid})</option>)}
-                  </select>
+                <div style={{display:'flex',gap:10,marginBottom:12}}>
+                  <label style={{display:'flex',gap:4,alignItems:'center'}}>
+                    <input type="radio" checked={!isNewPatient} onChange={()=>setIsNewPatient(false)} /> Existing Patient
+                  </label>
+                  <label style={{display:'flex',gap:4,alignItems:'center'}}>
+                    <input type="radio" checked={isNewPatient} onChange={()=>setIsNewPatient(true)} /> New Patient (Caller)
+                  </label>
                 </div>
+                
+                {!isNewPatient ? (
+                  <div className="form-group">
+                    <label className="form-label">Search Patient (Name, Phone, UHID) *</label>
+                    <input className="input" placeholder="Search..." value={patientSearch} onChange={e=>setPatientSearch(e.target.value)} style={{marginBottom:8}} />
+                    <select className="input" value={form.patient_id} onChange={e=>set('patient_id',e.target.value)} required>
+                      <option value="">— Select Patient —</option>
+                      {filteredPatients.map(p=><option key={p.id} value={p.id}>{p.name} - {p.phone||'No Phone'} ({p.uhid})</option>)}
+                    </select>
+                  </div>
+                ) : (
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12, marginBottom:12}}>
+                    <div className="form-group"><label className="form-label">Name *</label><input className="input" required value={newPatient.name} onChange={e=>setNewPatient({...newPatient,name:e.target.value})} /></div>
+                    <div className="form-group"><label className="form-label">Phone *</label><input className="input" required value={newPatient.phone} onChange={e=>setNewPatient({...newPatient,phone:e.target.value})} /></div>
+                  </div>
+                )}
                 <div className="form-group">
                   <label className="form-label">Doctor ID (optional)</label>
                   <input className="input" placeholder="Leave blank to assign yourself" value={form.doctor_id} onChange={e=>set('doctor_id',e.target.value)} />
