@@ -326,7 +326,7 @@ tbody tr:hover td { background: var(--primary-light); cursor: pointer; }
 .patient-avatar { width: 48px; height: 48px; border-radius: 12px; background: var(--primary-grad); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; flex-shrink: 0; }
 
 /* ── Vitals grid ────────────────────────────────────────────────────── */
-.vitals-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px,1fr)); gap: 10px; }
+.vitals-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 10px; }
 .vital-tile  { background: var(--surface-alt); border-radius: var(--radius); padding: 12px; text-align: center; border: 1px solid var(--border); }
 .vital-value { font-size: 22px; font-weight: 700; color: var(--text); }
 .vital-unit  { font-size: 10px; color: var(--text-muted); font-weight: 500; }

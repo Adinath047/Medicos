@@ -116,7 +116,7 @@ export default function VitalsPage({ onNavigate, data, mode }: { onNavigate:(p:s
             <div className="vitals-grid" style={{gap:16}}>
               {/* BP */}
               <div>
-                <div className="form-label" style={{marginBottom:6}}>🫀 Blood Pressure (mmHg)</div>
+                <div className="form-label" style={{marginBottom:6}}>Blood Pressure (mmHg)</div>
                 <div style={{display:'flex',gap:6}}>
                   <input className="input" type="number" placeholder="Sys" min={50} max={250} value={form.bp_s} onChange={e=>set('bp_s',e.target.value)} />
                   <span style={{alignSelf:'center',color:'var(--text-muted)'}}/> 
@@ -125,12 +125,12 @@ export default function VitalsPage({ onNavigate, data, mode }: { onNavigate:(p:s
               </div>
               {/* HR */}
               <div className="form-group">
-                <label className="form-label">💓 Heart Rate (bpm)</label>
+                <label className="form-label">Heart Rate (bpm)</label>
                 <input className="input" type="number" placeholder="72" min={30} max={250} value={form.hr} onChange={e=>set('hr',e.target.value)} />
               </div>
               {/* Temp */}
               <div>
-                <div className="form-label" style={{marginBottom:6}}>🌡️ Temperature</div>
+                <div className="form-label" style={{marginBottom:6}}>Temperature</div>
                 <div style={{display:'flex',gap:6}}>
                   <input className="input" type="number" placeholder="98.6" step={0.1} value={form.temp} onChange={e=>set('temp',e.target.value)} />
                   <select className="input" style={{width:'auto',flexShrink:0}} value={form.temp_unit} onChange={e=>set('temp_unit',e.target.value)}>
@@ -140,12 +140,12 @@ export default function VitalsPage({ onNavigate, data, mode }: { onNavigate:(p:s
               </div>
               {/* SpO2 */}
               <div className="form-group">
-                <label className="form-label">🫁 SpO₂ (%)</label>
+                <label className="form-label">SpO₂ (%)</label>
                 <input className="input" type="number" placeholder="98" min={50} max={100} value={form.spo2} onChange={e=>set('spo2',e.target.value)} />
               </div>
               {/* Weight */}
               <div>
-                <div className="form-label" style={{marginBottom:6}}>⚖️ Weight</div>
+                <div className="form-label" style={{marginBottom:6}}>Weight</div>
                 <div style={{display:'flex',gap:6}}>
                   <input className="input" type="number" placeholder="70" step={0.1} value={form.weight} onChange={e=>set('weight',e.target.value)} />
                   <select className="input" style={{width:'auto',flexShrink:0}} value={form.weight_unit} onChange={e=>set('weight_unit',e.target.value)}>
@@ -155,18 +155,18 @@ export default function VitalsPage({ onNavigate, data, mode }: { onNavigate:(p:s
               </div>
               {/* Height */}
               <div className="form-group">
-                <label className="form-label">📏 Height (cm)</label>
+                <label className="form-label">Height (cm)</label>
                 <input className="input" type="number" placeholder="170" value={form.height} onChange={e=>set('height',e.target.value)} />
                 {bmi && <div style={{fontSize:11,marginTop:4,color:'var(--text-muted)'}}>BMI: <strong style={{color:parseFloat(bmi)<18.5?'var(--info)':parseFloat(bmi)>30?'var(--danger)':'var(--success)'}}>{bmi}</strong></div>}
               </div>
               {/* RR */}
               <div className="form-group">
-                <label className="form-label">🌬️ Respiratory Rate</label>
+                <label className="form-label">Respiratory Rate</label>
                 <input className="input" type="number" placeholder="16" min={5} max={60} value={form.rr} onChange={e=>set('rr',e.target.value)} />
               </div>
               {/* Blood sugar */}
               <div>
-                <div className="form-label" style={{marginBottom:6}}>🩸 Blood Sugar (mg/dL)</div>
+                <div className="form-label" style={{marginBottom:6}}>Blood Sugar (mg/dL)</div>
                 <div style={{display:'flex',gap:6}}>
                   <input className="input" type="number" placeholder="110" step={0.1} value={form.sugar} onChange={e=>set('sugar',e.target.value)} />
                   <select className="input" style={{width:'auto',flexShrink:0}} value={form.sugar_type} onChange={e=>set('sugar_type',e.target.value)}>
@@ -176,7 +176,7 @@ export default function VitalsPage({ onNavigate, data, mode }: { onNavigate:(p:s
               </div>
               {/* Pain */}
               <div className="form-group">
-                <label className="form-label">😣 Pain Score (0-10)</label>
+                <label className="form-label">Pain Score (0-10)</label>
                 <input className="input" type="number" placeholder="0" min={0} max={10} value={form.pain} onChange={e=>set('pain',e.target.value)} />
               </div>
             </div>
