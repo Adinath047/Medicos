@@ -49,6 +49,10 @@ export const useAuthStore = create<AuthState>((set) => ({
         'admin@medicos.local':     { id:'usr-admin-001', name:'System Admin',    email:'admin@medicos.local',     role:'admin',        hospitalId:'hsp-001', password:'Admin@123' },
         'dr.sharma@medicos.local': { id:'usr-doc-001',   name:'Dr. Priya Sharma',email:'dr.sharma@medicos.local', role:'doctor',       hospitalId:'hsp-001', password:'Doctor@123' },
         'reception@medicos.local': { id:'usr-rcpt-001',  name:'Anita Patel',     email:'reception@medicos.local', role:'receptionist', hospitalId:'hsp-001', password:'Recept@123' },
+        'lab@medicos.local':       { id:'usr-lab-001',   name:'Lab Tech (Demo)', email:'lab@medicos.local',       role:'lab_technician',hospitalId:'hsp-001', password:'Demo@123' },
+        'pharmacy@medicos.local':  { id:'usr-pharm-001', name:'Pharmacist (Demo)',email:'pharmacy@medicos.local', role:'pharmacist',    hospitalId:'hsp-001', password:'Demo@123' },
+        'billing@medicos.local':   { id:'usr-bill-001',  name:'Billing (Demo)',  email:'billing@medicos.local',   role:'billing',       hospitalId:'hsp-001', password:'Demo@123' },
+        'nurse@medicos.local':     { id:'usr-nurse-001', name:'Nurse (Demo)',    email:'nurse@medicos.local',     role:'nurse',         hospitalId:'hsp-001', password:'Demo@123' },
       };
 
       const demo = DEMO_USERS[email.toLowerCase().trim()];
