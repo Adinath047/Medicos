@@ -45,6 +45,19 @@ function getNav(user: any) {
     { icon: 'vitals',       label: 'Vitals',         page: 'vitals' },
     { icon: 'appointments', label: 'Appointments',   page: 'appointments' },
   ];
+  if (user?.role === 'pharmacist') return [
+    { icon: 'pharmacy',     label: 'Pharmacy',       page: 'pharmacy' },
+    { icon: 'prescriptions',label: 'Prescriptions',  page: 'prescriptions' },
+    { icon: 'patients',     label: 'Patients',       page: 'patients' },
+  ];
+  if (user?.role === 'lab_technician') return [
+    { icon: 'patients',     label: 'Patients',       page: 'patients' },
+    { icon: 'vitals',       label: 'Vitals/Labs',    page: 'vitals' },
+  ];
+  if (user?.role === 'billing') return [
+    { icon: 'billing',      label: 'Billing',        page: 'billing' },
+    { icon: 'patients',     label: 'Patients',       page: 'patients' },
+  ];
   // Pharmacy staff: only see pharmacy billing
   if (user?.role === 'receptionist' && user?.staff_type === 'pharmacy') return [
     { icon: 'pharmacy',  label: '💊 Pharmacy Billing', page: 'pharmacy' },
@@ -66,10 +79,13 @@ function Sidebar({ page, onNav, user, sidebarOpen, onClose }: any) {
 
   // Role label & color
   const roleInfo: Record<string, { label: string; color: string }> = {
-    admin:        { label: 'Administrator', color: '#dc2626' },
-    doctor:       { label: 'Doctor',        color: '#0d9488' },
-    receptionist: { label: 'Receptionist',  color: '#d97706' },
-    nurse:        { label: 'Nurse',         color: '#7c3aed' },
+    admin:          { label: 'Administrator', color: '#dc2626' },
+    doctor:         { label: 'Doctor',        color: '#0d9488' },
+    receptionist:   { label: 'Receptionist',  color: '#d97706' },
+    nurse:          { label: 'Nurse',         color: '#7c3aed' },
+    lab_technician: { label: 'Lab Tech',      color: '#0369a1' },
+    pharmacist:     { label: 'Pharmacist',    color: '#16a34a' },
+    billing:        { label: 'Billing',       color: '#be123c' },
   };
   const { label: roleLabel, color: roleColor } = roleInfo[user?.role] ?? { label: user?.role, color: '#6b7280' };
 
@@ -163,6 +179,9 @@ export default function App() {
     if (!user) return;
     if (user.role === 'admin')        setPage('settings');
     else if (user.role === 'doctor')  setPage('patients');
+    else if (user.role === 'pharmacist') setPage('pharmacy');
+    else if (user.role === 'lab_technician') setPage('patients');
+    else if (user.role === 'billing') setPage('billing');
     else if (user.role === 'receptionist' && user.staff_type === 'pharmacy') setPage('pharmacy');
     else if (user.role === 'receptionist') setPage('dashboard');
     else                              setPage('patients');
@@ -188,17 +207,17 @@ export default function App() {
   // Access control per role
   const ACCESS: Record<string, string[]> = {
     dashboard:        ['receptionist'],
-    patients:         ['doctor', 'receptionist', 'nurse'],
-    patient_detail:   ['doctor', 'receptionist', 'nurse'],
-    prescriptions:    ['doctor'],
+    patients:         ['doctor', 'receptionist', 'nurse', 'lab_technician', 'pharmacist', 'billing'],
+    patient_detail:   ['doctor', 'receptionist', 'nurse', 'lab_technician', 'pharmacist', 'billing'],
+    prescriptions:    ['doctor', 'pharmacist'],
     new_prescription: ['doctor'],
     encounters:       ['doctor', 'nurse'],
     new_encounter:    ['doctor', 'nurse'],
-    vitals:           ['doctor', 'nurse'],
-    new_vitals:       ['doctor', 'nurse'],
+    vitals:           ['doctor', 'nurse', 'lab_technician'],
+    new_vitals:       ['doctor', 'nurse', 'lab_technician'],
     appointments:     ['doctor', 'receptionist'],
-    billing:          ['receptionist'],
-    pharmacy:         ['receptionist'],
+    billing:          ['receptionist', 'billing'],
+    pharmacy:         ['receptionist', 'pharmacist'],
   };
 
   function renderPage() {

@@ -90,16 +90,21 @@ export default function PatientDetail({ onNavigate, data }: { onNavigate:(p:stri
                 <button className="btn btn-secondary btn-sm" onClick={()=>onNavigate('new_encounter',{patientId:p.id,patient:p})}>
                   + Encounter
                 </button>
-                <button className="btn btn-ghost btn-sm" onClick={()=>onNavigate('new_vitals',{patientId:p.id})}>
-                  + Vitals
-                </button>
               </>
             )}
+            {(isDoctor || user?.role === 'nurse' || user?.role === 'lab_technician') && (
+              <button className="btn btn-ghost btn-sm" onClick={()=>onNavigate('new_vitals',{patientId:p.id})}>
+                + Vitals
+              </button>
+            )}
             {isReceptionist && (
-              <button className="btn btn-secondary btn-sm" onClick={()=>onNavigate('appointments')}>
+              <button className="btn btn-secondary btn-sm" onClick={()=>onNavigate('appointments', { showAdd: true, prefillPatient: p.id, reason: 'Consultation' })}>
                 Book Appointment
               </button>
             )}
+            <button className="btn btn-ghost btn-sm" onClick={()=>onNavigate('appointments', { showAdd: true, prefillPatient: p.id, reason: 'Follow-up' })}>
+              ↺ Schedule Follow-up
+            </button>
           </div>
         </div>
       </div>
@@ -194,6 +199,11 @@ export default function PatientDetail({ onNavigate, data }: { onNavigate:(p:stri
                       {enc.diagnosis && (Array.isArray(enc.diagnosis)?enc.diagnosis:JSON.parse(enc.diagnosis||'[]')).slice(0,2).map((d:any,i:number)=>(
                         <span key={i} className="tag" style={{marginRight:4,marginTop:4}}>{d.name}</span>
                       ))}
+                      <div style={{marginTop: 6}}>
+                        <button className="btn btn-ghost btn-sm" style={{fontSize: 11, padding: '2px 6px', minHeight: 24}} onClick={()=>onNavigate('appointments', { showAdd: true, prefillPatient: p.id, prefillDoctor: enc.doctor_id, reason: 'Follow-up to ' + (enc.chief_complaint || 'Encounter') })}>
+                          ↺ Book Follow-up
+                        </button>
+                      </div>
                     </div>
                     <span className={`badge ${enc.status==='Completed'?'badge-success':enc.status==='Active'?'badge-info':'badge-neutral'}`}>{enc.status}</span>
                   </div>
@@ -208,7 +218,7 @@ export default function PatientDetail({ onNavigate, data }: { onNavigate:(p:stri
         <div className="card">
           <div className="card-header">
             <div className="card-title">Vitals</div>
-            {isDoctor && <button className="btn btn-primary btn-sm" onClick={()=>onNavigate('new_vitals',{patientId:p.id})}>+ Record</button>}
+            {(isDoctor || user?.role === 'nurse' || user?.role === 'lab_technician') && <button className="btn btn-primary btn-sm" onClick={()=>onNavigate('new_vitals',{patientId:p.id})}>+ Record</button>}
           </div>
           {!vit
             ? <div className="empty-state"><span className="empty-icon">📊</span><h3>No vitals recorded</h3></div>

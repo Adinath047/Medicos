@@ -9,6 +9,18 @@ const ip = req => req.ip || null;
 
 const adminOnly = [authMiddleware, requireRole('admin')];
 
+// GET /api/users/doctors — list all doctors for booking
+router.get('/doctors', authMiddleware, (req, res) => {
+  const doctors = query(
+    `SELECT id, name, specialization, consultation_fee
+     FROM users
+     WHERE hospital_id = ? AND role = 'doctor' AND is_active = 1
+     ORDER BY name`,
+    [req.user.hospitalId || 'hsp-001']
+  );
+  res.json(doctors);
+});
+
 // GET /api/users — list all staff
 router.get('/', ...adminOnly, (req, res) => {
   const users = query(
@@ -28,7 +40,7 @@ router.post('/', ...adminOnly, (req, res) => {
           specialization, phone, license_number,
           consultation_fee = 0, followup_fee = 0 } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
-  if (!['doctor','receptionist','nurse'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+  if (!['doctor','receptionist','nurse','lab_technician','pharmacist','admin','billing'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
 
   const existing = queryOne('SELECT id FROM users WHERE email = ?', [email.toLowerCase().trim()]);
   if (existing) return res.status(409).json({ error: 'Email already registered' });

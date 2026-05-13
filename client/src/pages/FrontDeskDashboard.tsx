@@ -119,8 +119,15 @@ export default function FrontDeskDashboard({ onNavigate }: { onNavigate: (p: str
                         <div style={{ fontWeight: 600, color: 'var(--text)' }}>{p?.name || 'Unknown Patient'}</div>
                         <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{p?.uhid} · {a.time}</div>
                       </div>
-                      <div style={{ fontSize: 12, padding: '4px 8px', borderRadius: 20, fontWeight: 600, background: a.status === 'Completed' ? '#dcfce7' : '#f1f5f9', color: a.status === 'Completed' ? '#166534' : '#475569' }}>
-                        {a.status || 'Scheduled'}
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                        <div style={{ fontSize: 12, padding: '4px 8px', borderRadius: 20, fontWeight: 600, background: a.status === 'Completed' ? '#dcfce7' : a.status === 'Checked-In' ? '#e0e7ff' : '#f1f5f9', color: a.status === 'Completed' ? '#166534' : a.status === 'Checked-In' ? '#3730a3' : '#475569' }}>
+                          {a.status || 'Scheduled'}
+                        </div>
+                        {a.status === 'Checked-In' && user?.role === 'doctor' && (
+                          <button className="btn btn-primary btn-sm" style={{ padding: '2px 8px', fontSize: 11, minHeight: 24 }} onClick={() => onNavigate('new_encounter', { patientId: a.patient_id, appointmentId: a.id })}>
+                            Call Next
+                          </button>
+                        )}
                       </div>
                     </div>
                   );

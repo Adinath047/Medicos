@@ -10,8 +10,9 @@ const STATUS_COLOR: Record<string,string> = { 'Scheduled':'badge-info','Confirme
 
 function today() { return new Date().toISOString().split('T')[0]; }
 
-export default function AppointmentsPage({ onNavigate }: { onNavigate:(p:string,d?:any)=>void }) {
+export default function AppointmentsPage({ onNavigate, data }: { onNavigate:(p:string,d?:any)=>void; data?:any }) {
   const { user } = useAuthStore();
+  const [doctors, setDoctors] = useState<any[]>([]);
   const [appts, setAppts] = useState<any[]>([]);
   const [date, setDate]   = useState(today());
   const [patients, setPatients] = useState<any[]>([]);
@@ -40,7 +41,20 @@ export default function AppointmentsPage({ onNavigate }: { onNavigate:(p:string,
       try { const r = await apiClient.get('/patients',{params:{limit:200}}); setPatients(r.data.patients); }
       catch { setPatients(await db.patients.toArray()); }
     })();
+    (async () => {
+      try { const r = await apiClient.get('/users/doctors'); setDoctors(r.data); }
+      catch { /* ignore offline docs for now */ }
+    })();
   }, []);
+
+  useEffect(() => {
+    if (data?.showAdd) {
+      setShowAdd(true);
+      if (data?.prefillPatient) set('patient_id', data.prefillPatient);
+      if (data?.prefillDoctor) set('doctor_id', data.prefillDoctor);
+      if (data?.reason) set('reason', data.reason);
+    }
+  }, [data]);
 
   async function bookAppt(e:React.FormEvent) {
     e.preventDefault();
@@ -111,8 +125,12 @@ export default function AppointmentsPage({ onNavigate }: { onNavigate:(p:string,
                   </div>
                 )}
                 <div className="form-group">
-                  <label className="form-label">Doctor ID (optional)</label>
-                  <input className="input" placeholder="Leave blank to assign yourself" value={form.doctor_id} onChange={e=>set('doctor_id',e.target.value)} />
+                  <label className="form-label">Doctor *</label>
+                  <select className="input" value={form.doctor_id} onChange={e=>set('doctor_id',e.target.value)} required>
+                    <option value="">— Select Doctor —</option>
+                    {doctors.map(d => <option key={d.id} value={d.id}>Dr. {d.name} {d.specialization ? `(${d.specialization})` : ''}</option>)}
+                    {user?.role === 'doctor' && !doctors.find(d=>d.id===user.id) && <option value={user.id}>Dr. {user.name} (Me)</option>}
+                  </select>
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                   <div className="form-group"><label className="form-label">Date</label><input className="input" type="date" value={form.date} onChange={e=>set('date',e.target.value)} required /></div>
@@ -164,7 +182,14 @@ export default function AppointmentsPage({ onNavigate }: { onNavigate:(p:string,
                           <td style={{color:'var(--text-muted)',fontSize:12}}>{a.reason||'—'}</td>
                           <td><span className={`badge ${STATUS_COLOR[a.status]||'badge-neutral'}`}>{a.status}</span></td>
                           <td style={{display:'flex',gap:6}}>
-                            {STATUS_FLOW[a.status]&&<button className="btn btn-primary btn-sm" onClick={()=>updateStatus(a.id,STATUS_FLOW[a.status])}>→ {STATUS_FLOW[a.status]}</button>}
+                            {a.status === 'Checked-In' && (
+                              <button className="btn btn-primary btn-sm" onClick={() => onNavigate('new_encounter', { patientId: a.patient_id, appointmentId: a.id })}>
+                                Call Next / Encounter
+                              </button>
+                            )}
+                            {a.status !== 'Checked-In' && STATUS_FLOW[a.status] && (
+                              <button className="btn btn-secondary btn-sm" onClick={()=>updateStatus(a.id,STATUS_FLOW[a.status])}>→ {STATUS_FLOW[a.status]}</button>
+                            )}
                             {!['Cancelled','Completed'].includes(a.status)&&<button className="btn btn-ghost btn-sm" onClick={()=>updateStatus(a.id,'Cancelled')}>✕</button>}
                           </td>
                         </tr>

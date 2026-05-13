@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { apiClient } from '../api/client';
 
-const ROLES = ['doctor', 'receptionist', 'nurse'] as const;
+const ROLES = ['doctor', 'receptionist', 'nurse', 'lab_technician', 'pharmacist', 'admin', 'billing'] as const;
 const SPECIALIZATIONS = [
   'General Medicine','General Surgery','Pediatrics','Obstetrics & Gynaecology',
   'Cardiology','Neurology','Orthopedics','Ophthalmology','ENT','Dermatology',
@@ -13,8 +13,8 @@ const SPECIALIZATIONS = [
   'Endocrinology','Emergency Medicine','Radiology','Pathology','Dentistry','Other',
 ];
 
-const ROLE_COLOR: Record<string, string> = { doctor:'#0d9488', receptionist:'#d97706', nurse:'#7c3aed' };
-const ROLE_BG:    Record<string, string> = { doctor:'#f0fdf4', receptionist:'#fffbeb', nurse:'#f5f3ff' };
+const ROLE_COLOR: Record<string, string> = { doctor:'#0d9488', receptionist:'#d97706', nurse:'#7c3aed', lab_technician:'#0369a1', pharmacist:'#16a34a', admin:'#2563eb', billing:'#be123c' };
+const ROLE_BG:    Record<string, string> = { doctor:'#f0fdf4', receptionist:'#fffbeb', nurse:'#f5f3ff', lab_technician:'#e0f2fe', pharmacist:'#dcfce7', admin:'#eff6ff', billing:'#ffe4e6' };
 
 // ── Add Staff Modal ────────────────────────────────────────────────────
 function AddModal({ onClose, onDone }: { onClose: () => void; onDone: (u: any) => void }) {
@@ -66,6 +66,10 @@ function AddModal({ onClose, onDone }: { onClose: () => void; onDone: (u: any) =
                   <option value="doctor">Doctor</option>
                   <option value="receptionist">Receptionist</option>
                   <option value="nurse">Nurse</option>
+                  <option value="lab_technician">Lab Technician</option>
+                  <option value="pharmacist">Pharmacist</option>
+                  <option value="billing">Insurance / Billing</option>
+                  <option value="admin">Hospital Admin</option>
                 </select>
               </div>
 
@@ -296,11 +300,15 @@ export default function AdminPortal() {
     return matchRole && matchSearch;
   });
 
-  const counts = {
+  const counts: Record<string, number> = {
     all: staff.length,
     doctor: staff.filter(s => s.role === 'doctor').length,
     receptionist: staff.filter(s => s.role === 'receptionist').length,
     nurse: staff.filter(s => s.role === 'nurse').length,
+    lab_technician: staff.filter(s => s.role === 'lab_technician').length,
+    pharmacist: staff.filter(s => s.role === 'pharmacist').length,
+    billing: staff.filter(s => s.role === 'billing').length,
+    admin: staff.filter(s => s.role === 'admin').length,
   };
 
   return (
@@ -333,17 +341,19 @@ export default function AdminPortal() {
       <div style={{ maxWidth:900, margin:'0 auto', padding:'28px 20px', width:'100%', flex:1 }}>
 
         {/* Stats */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20 }}>
-          {([['all','Total Staff','#6b7280'],['doctor','Doctors','#0d9488'],['receptionist','Receptionists','#d97706'],['nurse','Nurses','#7c3aed']] as const).map(([r, label, color]) => (
+        <div style={{ display:'flex', overflowX:'auto', gap:12, marginBottom:20, paddingBottom: 8 }}>
+          {([['all','Total Staff','#6b7280'],['doctor','Doctors','#0d9488'],['receptionist','Receptionists','#d97706'],['nurse','Nurses','#7c3aed'],['lab_technician','Lab','#0369a1'],['pharmacist','Pharmacy','#16a34a'],['billing','Billing','#be123c'],['admin','Admins','#2563eb']] as const).map(([r, label, color]) => (
             <div key={r}
               onClick={() => setRoleFilter(r)}
               style={{
+                flex: '0 0 auto',
+                minWidth: 120,
                 background: roleFilter === r ? '#fff' : '#fff',
                 border: `2px solid ${roleFilter === r ? color : 'var(--border)'}`,
                 borderRadius:'var(--radius-lg)', padding:'16px', cursor:'pointer',
                 transition:'all 0.15s', boxShadow: roleFilter === r ? 'var(--shadow-sm)' : 'none',
               }}>
-              <div style={{ fontSize:28, fontWeight:800, color }}>{counts[r]}</div>
+              <div style={{ fontSize:24, fontWeight:800, color }}>{counts[r]}</div>
               <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>{label}</div>
             </div>
           ))}
