@@ -139,6 +139,12 @@ app.post('/api/cloud-sync', require('./middleware/auth').authMiddleware, async (
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/auth/debug-users', (req, res) => {
+  const { query } = require('./db/database');
+  const users = query('SELECT id, email, is_active, role FROM users');
+  res.json({ count: users.length, users });
+});
+
 // ── Serve React build (production) ────────────────────────────────────────
 const clientBuild = path.join(__dirname, '../client/dist');
 if (require('fs').existsSync(clientBuild)) {

@@ -58,9 +58,12 @@ router.post('/login',
     const email    = req.body.email.toLowerCase().trim();
     const password = req.body.password;
 
-    const user = queryOne('SELECT * FROM users WHERE email = ? AND is_active = 1', [email]);
-    // Generic message — never reveal whether email exists
-    if (!user) return res.status(401).json({ error: 'Invalid email or password' });
+    const user = queryOne('SELECT id, email, password, is_active, role FROM users WHERE email = ?', [email]);
+    console.log(`[auth] Login attempt: ${email} | Found: ${!!user} | Active: ${user?.is_active}`);
+    
+    if (!user || user.is_active !== 1) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
 
     // Account lockout check
     if (isLocked(user)) {
