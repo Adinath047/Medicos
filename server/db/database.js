@@ -67,6 +67,7 @@ function getDB() {
          value TEXT NOT NULL
        )`,
       // Force admin credentials update (fixes INSERT OR IGNORE issue on existing DBs)
+      `DELETE FROM users WHERE email = 'adinathmade@medicos.com' AND id != 'usr-admin-001'`,
       `UPDATE users 
        SET email = 'adinathmade@medicos.com', 
            password = '$2a$10$1LADfgd8HQ0allD5lnGLb.dVxH.sVVCt07WYykl48x0vryQ1fCgLO', 
@@ -90,6 +91,9 @@ function getDB() {
     ];
     for (const m of migrations) {
       try {
+        if (m.startsWith('UPDATE users') || m.startsWith('DELETE FROM users')) {
+          console.log(`[db] Running migration: ${m.split('\n')[0]}...`);
+        }
         db.exec(m);
       } catch (err) {
         // Only ignore "already exists" errors

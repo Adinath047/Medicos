@@ -14,7 +14,7 @@ const ip = req => req.ip || null;
 // ── Per-IP brute-force guard ────────────────────────────────────────────────
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 50,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many login attempts. Please wait 15 minutes.' },
