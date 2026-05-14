@@ -131,7 +131,7 @@ app.get('/api/dashboard', require('./middleware/auth').authMiddleware, (req, res
 // ── Health check + cloud status ─────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   const cloud = getCloudStatus();
-  res.json({ status: 'ok', time: new Date().toISOString(), version: '1.0.0', cloud });
+  res.json({ status: 'ok', time: new Date().toISOString(), version: '1.0.1', cloud });
 });
 
 app.post('/api/cloud-sync', require('./middleware/auth').authMiddleware, async (req, res) => {
