@@ -3,16 +3,26 @@ const router = require('express').Router();
 const { v4: uuid } = require('uuid');
 const { query, queryOne, run, parseJsonFields, auditLog } = require('../db/database');
 const { authMiddleware } = require('../middleware/auth');
+const v = require('../middleware/validate');
 
 const ip = req => req.ip || null;
 
 const parseEnc = r => parseJsonFields(r, ['diagnosis']);
+
+const VALID_ENCOUNTER_TYPES = ['OPD', 'IPD', 'Emergency', 'Follow-Up', 'Teleconsult', 'Procedure'];
+const VALID_STATUSES        = ['Active', 'Completed', 'Cancelled'];
 
 // GET /api/encounters?patient_id=&doctor_id=&date=
 router.get('/', authMiddleware, (req, res) => {
   const { patient_id, doctor_id, date, limit = 20, offset = 0 } = req.query;
   const { hospitalId, role } = req.user;
   const hid = role === 'super_admin' ? null : hospitalId;
+  const safeLimit  = Math.min(Math.max(parseInt(limit)  || 20, 1), 200);
+  const safeOffset = Math.max(parseInt(offset) || 0, 0);
+
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(422).json({ error: 'date must be in YYYY-MM-DD format' });
+  }
 
   let sql = 'SELECT e.*, p.name as patient_name, p.uhid, u.name as doctor_name FROM encounters e JOIN patients p ON e.patient_id = p.id JOIN users u ON e.doctor_id = u.id WHERE 1=1';
   const params = [];
@@ -20,9 +30,8 @@ router.get('/', authMiddleware, (req, res) => {
   if (patient_id) { sql += ' AND e.patient_id = ?';  params.push(patient_id); }
   if (doctor_id)  { sql += ' AND e.doctor_id = ?';   params.push(doctor_id); }
   if (date)       { sql += ' AND date(e.created_at) = ?'; params.push(date); }
-
   sql += ' ORDER BY e.created_at DESC LIMIT ? OFFSET ?';
-  params.push(Number(limit), Number(offset));
+  params.push(safeLimit, safeOffset);
 
   res.json(query(sql, params).map(parseEnc));
 });
@@ -35,85 +44,114 @@ router.get('/:id', authMiddleware, (req, res) => {
   );
   if (!row) return res.status(404).json({ error: 'Encounter not found' });
 
-  const vitals = queryOne('SELECT * FROM vitals WHERE encounter_id = ? ORDER BY recorded_at DESC', [req.params.id]);
+  const vitals       = queryOne('SELECT * FROM vitals WHERE encounter_id = ? ORDER BY recorded_at DESC', [req.params.id]);
   const prescriptions = query('SELECT * FROM prescriptions WHERE encounter_id = ?', [req.params.id]);
-  const labs = query('SELECT * FROM lab_orders WHERE encounter_id = ?', [req.params.id]);
+  const labs         = query('SELECT * FROM lab_orders WHERE encounter_id = ?', [req.params.id]);
 
   res.json({ ...parseEnc(row), vitals, prescriptions, labs });
 });
 
 // POST /api/encounters
-router.post('/', authMiddleware, (req, res) => {
-  const {
-    patient_id, doctor_id, encounter_type = 'OPD',
-    chief_complaint, history, past_history, examination,
-    diagnosis = [], impression, plan, advice, follow_up_date,
-    refer_to, notes, billing_amount,
-    hospital_id: bodyHid,
-  } = req.body;
+router.post('/',
+  authMiddleware,
+  v.body({
+    patient_id:      [v.required, v.str(1, 100)],
+    encounter_type:  [v.oneOf(VALID_ENCOUNTER_TYPES)],
+    chief_complaint: [v.str(0, 2000)],
+    billing_amount:  [v.float(0, 9999999)],
+    follow_up_date:  [v.date],
+  }),
+  (req, res) => {
+    const {
+      patient_id, doctor_id, encounter_type = 'OPD',
+      chief_complaint, history, past_history, examination,
+      diagnosis = [], impression, plan, advice, follow_up_date,
+      refer_to, notes, billing_amount,
+      hospital_id: bodyHid,
+    } = req.body;
 
-  if (!patient_id) return res.status(400).json({ error: 'patient_id required' });
+    // Verify patient exists
+    const patient = queryOne('SELECT id FROM patients WHERE id = ? AND is_active = 1', [patient_id]);
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
 
-  const hospitalId = bodyHid || req.user.hospitalId || 'hsp-001';
-  const docId = doctor_id || req.user.id;
-  const id = uuid();
+    // diagnosis must be an array
+    if (!Array.isArray(diagnosis)) {
+      return res.status(422).json({ error: 'diagnosis must be an array' });
+    }
 
-  // Get today's token for this doctor
-  const tokenCount = queryOne(
-    "SELECT COUNT(*) as n FROM encounters WHERE doctor_id = ? AND date(created_at) = date('now')",
-    [docId]
-  ).n;
+    const hospitalId = bodyHid || req.user.hospitalId || 'hsp-001';
+    const docId = doctor_id || req.user.id;
+    const id = uuid();
 
-  run(
-    `INSERT INTO encounters
-      (id, hospital_id, patient_id, doctor_id, encounter_type, token_number,
-       chief_complaint, history, past_history, examination,
-       diagnosis, impression, plan, advice, follow_up_date,
-       refer_to, notes, billing_amount)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [id, hospitalId, patient_id, docId, encounter_type, tokenCount + 1,
-     chief_complaint||null, history||null, past_history||null, examination||null,
-     JSON.stringify(diagnosis), impression||null, plan||null, advice||null,
-     follow_up_date||null, refer_to||null, notes||null, billing_amount||null]
-  );
+    const tokenCount = queryOne(
+      "SELECT COUNT(*) as n FROM encounters WHERE doctor_id = ? AND date(created_at) = date('now')",
+      [docId]
+    ).n;
 
-  // Update patient last visit
-  run("UPDATE patients SET updated_at = datetime('now') WHERE id = ?", [patient_id]);
+    run(
+      `INSERT INTO encounters
+        (id, hospital_id, patient_id, doctor_id, encounter_type, token_number,
+         chief_complaint, history, past_history, examination,
+         diagnosis, impression, plan, advice, follow_up_date,
+         refer_to, notes, billing_amount)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [id, hospitalId, patient_id, docId, encounter_type, tokenCount + 1,
+       chief_complaint||null, history||null, past_history||null, examination||null,
+       JSON.stringify(diagnosis), impression||null, plan||null, advice||null,
+       follow_up_date||null, refer_to||null, notes||null, billing_amount||null]
+    );
 
-  auditLog(req.user.id, 'CREATE_ENCOUNTER', 'encounters', id, { patient_id, encounter_type, doctor_id: docId }, ip(req));
-  res.status(201).json(parseEnc(queryOne('SELECT * FROM encounters WHERE id = ?', [id])));
-});
+    run("UPDATE patients SET updated_at = datetime('now') WHERE id = ?", [patient_id]);
+
+    auditLog(req.user.id, 'CREATE_ENCOUNTER', 'encounters', id, { patient_id, encounter_type, doctor_id: docId }, ip(req));
+    res.status(201).json(parseEnc(queryOne('SELECT * FROM encounters WHERE id = ?', [id])));
+  }
+);
 
 // PUT /api/encounters/:id
-router.put('/:id', authMiddleware, (req, res) => {
-  const existing = queryOne('SELECT id FROM encounters WHERE id = ?', [req.params.id]);
-  if (!existing) return res.status(404).json({ error: 'Not found' });
+router.put('/:id',
+  authMiddleware,
+  v.body({
+    status:         [v.oneOf(VALID_STATUSES)],
+    billing_amount: [v.float(0, 9999999)],
+    follow_up_date: [v.date],
+  }),
+  (req, res) => {
+    const existing = queryOne('SELECT id FROM encounters WHERE id = ?', [req.params.id]);
+    if (!existing) return res.status(404).json({ error: 'Not found' });
 
-  const {
-    chief_complaint, history, past_history, examination,
-    diagnosis, impression, plan, advice, follow_up_date,
-    refer_to, notes, status, billing_amount,
-  } = req.body;
+    const {
+      chief_complaint, history, past_history, examination,
+      diagnosis, impression, plan, advice, follow_up_date,
+      refer_to, notes, status, billing_amount,
+    } = req.body;
 
-  run(
-    `UPDATE encounters SET
-      chief_complaint=?, history=?, past_history=?, examination=?,
-      diagnosis=?, impression=?, plan=?, advice=?, follow_up_date=?,
-      refer_to=?, notes=?, status=?, billing_amount=?,
-      updated_at=datetime('now')
-     WHERE id=?`,
-    [chief_complaint||null, history||null, past_history||null, examination||null,
-     JSON.stringify(diagnosis||[]), impression||null, plan||null, advice||null,
-     follow_up_date||null, refer_to||null, notes||null, status||'Active', billing_amount||null,
-     req.params.id]
-  );
+    if (diagnosis !== undefined && !Array.isArray(diagnosis)) {
+      return res.status(422).json({ error: 'diagnosis must be an array' });
+    }
 
-  auditLog(req.user.id, 'UPDATE_ENCOUNTER', 'encounters', req.params.id, { status }, ip(req));
-  res.json(parseEnc(queryOne('SELECT * FROM encounters WHERE id = ?', [req.params.id])));
-});
+    run(
+      `UPDATE encounters SET
+        chief_complaint=?, history=?, past_history=?, examination=?,
+        diagnosis=?, impression=?, plan=?, advice=?, follow_up_date=?,
+        refer_to=?, notes=?, status=?, billing_amount=?,
+        updated_at=datetime('now')
+       WHERE id=?`,
+      [chief_complaint||null, history||null, past_history||null, examination||null,
+       JSON.stringify(diagnosis||[]), impression||null, plan||null, advice||null,
+       follow_up_date||null, refer_to||null, notes||null, status||'Active', billing_amount||null,
+       req.params.id]
+    );
+
+    auditLog(req.user.id, 'UPDATE_ENCOUNTER', 'encounters', req.params.id, { status }, ip(req));
+    res.json(parseEnc(queryOne('SELECT * FROM encounters WHERE id = ?', [req.params.id])));
+  }
+);
 
 // DELETE /api/encounters/:id
 router.delete('/:id', authMiddleware, (req, res) => {
+  const existing = queryOne('SELECT id FROM encounters WHERE id = ?', [req.params.id]);
+  if (!existing) return res.status(404).json({ error: 'Encounter not found' });
   run("UPDATE encounters SET status = 'Cancelled', updated_at = datetime('now') WHERE id = ?", [req.params.id]);
   auditLog(req.user.id, 'CANCEL_ENCOUNTER', 'encounters', req.params.id, {}, ip(req));
   res.json({ success: true });

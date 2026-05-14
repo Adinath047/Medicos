@@ -2,9 +2,12 @@
 const router = require('express').Router();
 const { v4: uuid } = require('uuid');
 const { query, queryOne, run, parseJsonFields, auditLog } = require('../db/database');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, requireRole } = require('../middleware/auth');
+const v = require('../middleware/validate');
 
 const ip = req => req.ip || null;
+const BILLING_ROLES = ['billing', 'receptionist', 'admin'];
+const VALID_PAYMENT_MODES = ['Cash', 'Card', 'UPI', 'Insurance', 'NEFT', 'Cheque', 'Other'];
 
 const parseBill = r => parseJsonFields(r, ['items']);
 
@@ -24,7 +27,18 @@ router.get('/', authMiddleware, (req, res) => {
 });
 
 // POST /api/billing
-router.post('/', authMiddleware, (req, res) => {
+router.post('/',
+  authMiddleware,
+  requireRole(...BILLING_ROLES),
+  v.body({
+    patient_id:   [v.required, v.str(1, 100)],
+    total_amount: [v.float(0, 9999999)],
+    net_amount:   [v.float(0, 9999999)],
+    paid_amount:  [v.float(0, 9999999)],
+    discount:     [v.float(0, 100)],
+    payment_mode: [v.oneOf(VALID_PAYMENT_MODES)],
+  }),
+  (req, res) => {
   const {
     patient_id, encounter_id,
     items = [], total_amount, discount = 0,
@@ -55,7 +69,14 @@ router.post('/', authMiddleware, (req, res) => {
 });
 
 // PUT /api/billing/:id/payment
-router.put('/:id/payment', authMiddleware, (req, res) => {
+router.put('/:id/payment',
+  authMiddleware,
+  requireRole(...BILLING_ROLES),
+  v.body({
+    paid_amount:  [v.required, v.float(0, 9999999)],
+    payment_mode: [v.oneOf(VALID_PAYMENT_MODES)],
+  }),
+  (req, res) => {
   const { paid_amount, payment_mode } = req.body;
   const bill = queryOne('SELECT * FROM billing WHERE id = ?', [req.params.id]);
   if (!bill) return res.status(404).json({ error: 'Not found' });

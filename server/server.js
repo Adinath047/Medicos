@@ -4,7 +4,9 @@ const express    = require('express');
 const cors       = require('cors');
 const helmet     = require('helmet');
 const compression = require('compression');
+const cookieParser= require('cookie-parser');
 const path       = require('path');
+const crypto     = require('crypto');
 const { initCloud, getCloudStatus, syncCycle } = require('./db/cloudSync');
 
 const app  = express();
@@ -23,13 +25,39 @@ app.use(helmet({
 }));
 
 app.use(compression());
+app.use(cookieParser());
 
 // Restrict CORS
 app.use(cors({
-  origin: process.env.CLIENT_ORIGIN || '*',
+  origin: [
+    process.env.CLIENT_ORIGIN || '*',
+    process.env.NODE_ENV === 'development' ? 'http://localhost:5173' : null
+  ].filter(Boolean),
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization'],
+  allowedHeaders: ['Content-Type','Authorization','X-CSRF-Token'],
+  credentials: true,
 }));
+
+// CSRF Double-Submit Middleware
+app.use((req, res, next) => {
+  // Safe methods don't need CSRF check
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  
+  // Skip CSRF for login/register
+  if (req.path.startsWith('/api/auth/login') || req.path === '/api/auth/register') return next();
+  
+  // Mobile app might not use cookies, fallback to authorization header for CSRF if token in header?
+  // Let's enforce CSRF for all state-changing requests using cookies
+  if (req.cookies && req.cookies.emr_token) {
+    const cookieToken = req.cookies.csrf_token;
+    const headerToken = req.headers['x-csrf-token'];
+    
+    if (!cookieToken || !headerToken || cookieToken !== headerToken) {
+      return res.status(403).json({ error: 'CSRF token mismatch or missing' });
+    }
+  }
+  next();
+});
 
 // Global Rate Limiting to prevent DDoS
 const rateLimit = require('express-rate-limit');

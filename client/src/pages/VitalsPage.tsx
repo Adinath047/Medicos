@@ -4,10 +4,26 @@ import { apiClient } from '../api/client';
 import { db, markPending } from '../db/localDB';
 import { useAuthStore } from '../store/authStore';
 import { v4 as uuid } from 'uuid';
+import { validateRange, collectErrors, isValid, extractServerError, type FieldErrors } from '../utils/validation';
 
 const SUGAR_TYPES = ['Fasting','Random','Post-meal','HbA1c'];
 const FLAG_COLOR = (val:number|undefined, low:number, high:number) =>
   !val ? 'var(--text)' : val > high ? 'var(--danger)' : val < low ? 'var(--info)' : 'var(--success)';
+
+// Clinical ranges for UI validation (matches server-side RANGES)
+const RANGES = {
+  bp_s:   { min:50,  max:300,   label:'Systolic BP',      unit:'mmHg' },
+  bp_d:   { min:20,  max:200,   label:'Diastolic BP',     unit:'mmHg' },
+  hr:     { min:20,  max:300,   label:'Heart rate',        unit:'bpm'  },
+  tempF:  { min:85,  max:115,   label:'Temperature (°F)',  unit:'°F'   },
+  tempC:  { min:30,  max:46,    label:'Temperature (°C)',  unit:'°C'   },
+  spo2:   { min:50,  max:100,   label:'SpO₂',              unit:'%'    },
+  weight: { min:0.5, max:600,   label:'Weight',            unit:'kg'   },
+  height: { min:20,  max:280,   label:'Height',            unit:'cm'   },
+  rr:     { min:1,   max:80,    label:'Respiratory rate',  unit:'/min' },
+  sugar:  { min:10,  max:2000,  label:'Blood sugar',       unit:'mg/dL'},
+  pain:   { min:0,   max:10,    label:'Pain score',        unit:''     },
+};
 
 export default function VitalsPage({ onNavigate, data, mode }: { onNavigate:(p:string,d?:any)=>void; data?:any; mode?:string }) {
   const { user } = useAuthStore();
@@ -17,8 +33,12 @@ export default function VitalsPage({ onNavigate, data, mode }: { onNavigate:(p:s
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [history, setHistory] = useState<any[]>([]);
-  const set = (k:string, v:string) => setForm(f=>({...f,[k]:v}));
+  const set = (k:string, v:string) => {
+    setForm(f=>({...f,[k]:v}));
+    setFieldErrors(fe => { const n = {...fe}; delete n[k]; return n; });
+  };
 
   const bmi = form.weight && form.height
     ? (parseFloat(form.weight) / Math.pow(parseFloat(form.height)/100, 2)).toFixed(1)
@@ -50,7 +70,36 @@ export default function VitalsPage({ onNavigate, data, mode }: { onNavigate:(p:s
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!patientId) { setError('Select a patient'); return; }
+    if (!patientId) { setError('Please select a patient'); return; }
+
+    // Client-side clinical range validation
+    const tempKey = form.temp_unit === 'C' ? 'tempC' : 'tempF';
+    const rangeChecks = collectErrors({
+      bp_s:   validateRange(form.bp_s,   RANGES.bp_s.min,   RANGES.bp_s.max,   RANGES.bp_s.label),
+      bp_d:   validateRange(form.bp_d,   RANGES.bp_d.min,   RANGES.bp_d.max,   RANGES.bp_d.label),
+      hr:     validateRange(form.hr,     RANGES.hr.min,     RANGES.hr.max,     RANGES.hr.label),
+      temp:   validateRange(form.temp,   RANGES[tempKey].min, RANGES[tempKey].max, RANGES[tempKey].label),
+      spo2:   validateRange(form.spo2,   RANGES.spo2.min,   RANGES.spo2.max,   RANGES.spo2.label),
+      weight: validateRange(form.weight, RANGES.weight.min, RANGES.weight.max, RANGES.weight.label),
+      height: validateRange(form.height, RANGES.height.min, RANGES.height.max, RANGES.height.label),
+      rr:     validateRange(form.rr,     RANGES.rr.min,     RANGES.rr.max,     RANGES.rr.label),
+      sugar:  validateRange(form.sugar,  RANGES.sugar.min,  RANGES.sugar.max,  RANGES.sugar.label),
+      pain:   validateRange(form.pain,   RANGES.pain.min,   RANGES.pain.max,   RANGES.pain.label),
+    });
+
+    if (!isValid(rangeChecks)) {
+      setFieldErrors(rangeChecks);
+      setError('Please correct the highlighted values before saving.');
+      return;
+    }
+
+    // Ensure at least one vital was filled in
+    const anyFilled = [form.bp_s, form.bp_d, form.hr, form.temp, form.spo2,
+                       form.weight, form.height, form.rr, form.sugar, form.pain].some(v => v !== '');
+    if (!anyFilled) {
+      setError('Please enter at least one vital measurement.');
+      return;
+    }
     setSaving(true); setError('');
     const now = new Date().toISOString();
     const id  = uuid();
@@ -79,12 +128,27 @@ export default function VitalsPage({ onNavigate, data, mode }: { onNavigate:(p:s
       await apiClient.post('/vitals', payload);
       setSuccess('Vitals recorded ✓');
       setHistory(h => [...h, payload]);
-    } catch {
+    } catch (err) {
+      const status = (err as any)?.response?.status;
+      if (status === 422) {
+        setError(extractServerError(err));
+        setSaving(false);
+        return;
+      }
       await markPending(db.vitals, payload, 'create');
       setSuccess('Saved locally — will sync when online ✓');
       await db.vitals.put(payload);
       setHistory(h => [...h, payload]);
     } finally { setSaving(false); }
+  }
+
+  const fs = (k: string): React.CSSProperties =>
+    fieldErrors[k] ? { borderColor: 'var(--danger)' } : {};
+
+  function FieldErr({ k }: { k: string }) {
+    return fieldErrors[k]
+      ? <div style={{ color:'var(--danger)', fontSize:11, marginTop:2 }}>⚠ {fieldErrors[k]}</div>
+      : null;
   }
 
   return (
@@ -118,46 +182,52 @@ export default function VitalsPage({ onNavigate, data, mode }: { onNavigate:(p:s
               <div>
                 <div className="form-label" style={{marginBottom:6}}>Blood Pressure (mmHg)</div>
                 <div style={{display:'flex',gap:6}}>
-                  <input className="input" type="number" placeholder="Sys" min={50} max={250} value={form.bp_s} onChange={e=>set('bp_s',e.target.value)} />
-                  <span style={{alignSelf:'center',color:'var(--text-muted)'}}/> 
-                  <input className="input" type="number" placeholder="Dia" min={30} max={150} value={form.bp_d} onChange={e=>set('bp_d',e.target.value)} />
+                  <input className="input" type="number" placeholder="Sys" min={50} max={300} value={form.bp_s} onChange={e=>set('bp_s',e.target.value)} style={fs('bp_s')} />
+                  <span style={{alignSelf:'center',color:'var(--text-muted)'}} />
+                  <input className="input" type="number" placeholder="Dia" min={20} max={200} value={form.bp_d} onChange={e=>set('bp_d',e.target.value)} style={fs('bp_d')} />
                 </div>
+                {(fieldErrors.bp_s || fieldErrors.bp_d) && <div style={{color:'var(--danger)',fontSize:11,marginTop:2}}>⚠ {fieldErrors.bp_s || fieldErrors.bp_d}</div>}
               </div>
               {/* HR */}
               <div className="form-group">
                 <label className="form-label">Heart Rate (bpm)</label>
-                <input className="input" type="number" placeholder="72" min={30} max={250} value={form.hr} onChange={e=>set('hr',e.target.value)} />
+                <input className="input" type="number" placeholder="72" min={20} max={300} value={form.hr} onChange={e=>set('hr',e.target.value)} style={fs('hr')} />
+                <FieldErr k="hr" />
               </div>
               {/* Temp */}
               <div>
                 <div className="form-label" style={{marginBottom:6}}>Temperature</div>
                 <div style={{display:'flex',gap:6}}>
-                  <input className="input" type="number" placeholder="98.6" step={0.1} value={form.temp} onChange={e=>set('temp',e.target.value)} />
+                  <input className="input" type="number" placeholder="98.6" step={0.1} value={form.temp} onChange={e=>set('temp',e.target.value)} style={fs('temp')} />
                   <select className="input" style={{width:'auto',flexShrink:0}} value={form.temp_unit} onChange={e=>set('temp_unit',e.target.value)}>
                     <option>F</option><option>C</option>
                   </select>
                 </div>
+                <FieldErr k="temp" />
               </div>
               {/* SpO2 */}
               <div className="form-group">
                 <label className="form-label">SpO₂ (%)</label>
-                <input className="input" type="number" placeholder="98" min={50} max={100} value={form.spo2} onChange={e=>set('spo2',e.target.value)} />
+                <input className="input" type="number" placeholder="98" min={50} max={100} value={form.spo2} onChange={e=>set('spo2',e.target.value)} style={fs('spo2')} />
+                <FieldErr k="spo2" />
               </div>
               {/* Weight */}
               <div>
                 <div className="form-label" style={{marginBottom:6}}>Weight</div>
                 <div style={{display:'flex',gap:6}}>
-                  <input className="input" type="number" placeholder="70" step={0.1} value={form.weight} onChange={e=>set('weight',e.target.value)} />
+                  <input className="input" type="number" placeholder="70" step={0.1} value={form.weight} onChange={e=>set('weight',e.target.value)} style={fs('weight')} />
                   <select className="input" style={{width:'auto',flexShrink:0}} value={form.weight_unit} onChange={e=>set('weight_unit',e.target.value)}>
                     <option>kg</option><option>lbs</option>
                   </select>
                 </div>
+                <FieldErr k="weight" />
               </div>
               {/* Height */}
               <div className="form-group">
                 <label className="form-label">Height (cm)</label>
-                <input className="input" type="number" placeholder="170" value={form.height} onChange={e=>set('height',e.target.value)} />
+                <input className="input" type="number" placeholder="170" value={form.height} onChange={e=>set('height',e.target.value)} style={fs('height')} />
                 {bmi && <div style={{fontSize:11,marginTop:4,color:'var(--text-muted)'}}>BMI: <strong style={{color:parseFloat(bmi)<18.5?'var(--info)':parseFloat(bmi)>30?'var(--danger)':'var(--success)'}}>{bmi}</strong></div>}
+                <FieldErr k="height" />
               </div>
               {/* RR */}
               <div className="form-group">

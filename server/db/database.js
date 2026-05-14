@@ -2,8 +2,9 @@
 // Uses Node.js built-in 'node:sqlite' — stable in Node 24, no native compilation needed.
 
 const { DatabaseSync } = require('node:sqlite');
-const path = require('path');
-const fs   = require('fs');
+const path   = require('path');
+const fs     = require('fs');
+const crypto = require('crypto');
 
 const DB_PATH  = process.env.DB_PATH || path.join(__dirname, '../../emr_data.sqlite3');
 const SQL_PATH = path.join(__dirname, 'schema.sql');
@@ -65,16 +66,25 @@ function getDB() {
          key   TEXT PRIMARY KEY,
          value TEXT NOT NULL
        )`,
-      // Fix seed user password hashes (old hash was placeholder, not actual passwords)
-      `UPDATE users SET password = '$2a$10$MLl//yWnowDtuDfcC1Y.B.IqOugs3ssrG0KH97n3Kpdx5aYKx/A2i'
-       WHERE id = 'usr-admin-001' AND password = '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'`,
-      `UPDATE users SET password = '$2a$10$P7E4OHjw26NaRnJESh85OudIwEUwJxfILUIyBEy.jO3Q2WiEo4O2e'
-       WHERE id = 'usr-doc-001' AND password = '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'`,
-      `UPDATE users SET password = '$2a$10$DUYts83FR/pnoqZ0xE4qgOK4dPZ8VLK4Dmnkm29C1AhpfAc4md5jW'
-       WHERE id = 'usr-rcpt-001' AND password = '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'`,
+      // Lockout tracking
+      "ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE users ADD COLUMN locked_until TEXT",
+      // Field encryption hashes
+      "ALTER TABLE patients ADD COLUMN phone_hash TEXT",
+      // Audit log tamper evidence
+      "ALTER TABLE audit_log ADD COLUMN hash TEXT",
+      "ALTER TABLE audit_log ADD COLUMN previous_hash TEXT",
+      // MFA
+      "ALTER TABLE users ADD COLUMN totp_secret TEXT",
     ];
     for (const m of migrations) {
       try { db.exec(m); } catch { /* already exists */ }
+    }
+
+    // Initialize audit log hash chain if empty
+    const firstLog = db.prepare('SELECT id FROM audit_log ORDER BY created_at ASC LIMIT 1').get();
+    if (firstLog) {
+      db.exec("UPDATE audit_log SET previous_hash = 'GENESIS', hash = 'MIGRATED' WHERE hash IS NULL");
     }
 
     console.log(`✅ SQLite database ready: ${DB_PATH}`);
@@ -143,17 +153,32 @@ function parseJsonFields(row, fields) {
  * @param {string} [ipAddress]  - request IP
  */
 function auditLog(userId, action, tableName, recordId, details = {}, ipAddress = null) {
+  const d = getDB();
   try {
-    getDB().prepare(
-      `INSERT INTO audit_log (user_id, action, table_name, record_id, details, ip_address)
-       VALUES (?, ?, ?, ?, ?, ?)`
+    const detailsStr = JSON.stringify(details);
+    
+    // Hash chain implementation
+    let prevHash = 'GENESIS';
+    const lastEntry = d.prepare('SELECT hash FROM audit_log ORDER BY id DESC LIMIT 1').get();
+    if (lastEntry && lastEntry.hash) prevHash = lastEntry.hash;
+    
+    const ts = new Date().toISOString();
+    const payload = `${prevHash}|${userId || 'unknown'}|${action}|${tableName || ''}|${recordId || ''}|${detailsStr}|${ts}`;
+    const hash = crypto.createHash('sha256').update(payload).digest('hex');
+
+    d.prepare(
+      `INSERT INTO audit_log (user_id, action, table_name, record_id, details, ip_address, previous_hash, hash, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       userId || 'unknown',
       action,
       tableName || null,
       String(recordId || ''),
-      JSON.stringify(details),
-      ipAddress || null
+      detailsStr,
+      ipAddress || null,
+      prevHash,
+      hash,
+      ts
     );
   } catch (err) {
     // Log to console only — never propagate

@@ -17,49 +17,70 @@ interface AuthState {
   restoreSession: () => void;
 }
 
+// ── Offline demo accounts (DEV only) ─────────────────────────────────────────
+// These are only used when the server is unreachable AND we are in dev mode.
+const DEV_FALLBACK_USERS: Record<string, AuthUser & { password: string }> = {
+  'adinathmade@medicos.com': { id:'usr-admin-001', name:'Adinath Admin', email:'adinathmade@medicos.com', role:'admin', hospitalId:'hsp-001', password:'adinathmade33' },
+};
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   token: null,
   isLoading: true,
 
   restoreSession: () => {
-    const token = localStorage.getItem('emr_token');
-    const raw   = localStorage.getItem('emr_user');
-    if (token && raw) {
-      try { set({ user: JSON.parse(raw), token, isLoading: false }); return; }
-      catch { /* fall through */ }
+    const raw = localStorage.getItem('emr_user');
+    // We can't read httpOnly emr_token, but csrf_token is readable by JS
+    const hasCsrfCookie = document.cookie.includes('csrf_token=');
+    const isOfflineDemo = localStorage.getItem('emr_is_demo') === 'true';
+
+    if (raw) {
+      try {
+        const user = JSON.parse(raw) as AuthUser;
+        
+        if (isOfflineDemo && import.meta.env.PROD) {
+          localStorage.removeItem('emr_user');
+          localStorage.removeItem('emr_is_demo');
+          set({ isLoading: false });
+          return;
+        }
+
+        if (hasCsrfCookie || isOfflineDemo) {
+          set({ user, token: 'cookie-auth', isLoading: false });
+          return;
+        }
+      } catch { /* fall through */ }
     }
+    
+    // Clear dead state if no cookie/demo active
+    localStorage.removeItem('emr_user');
+    localStorage.removeItem('emr_is_demo');
     set({ isLoading: false });
   },
 
   login: async (email, password) => {
-    // ── Try server first ──────────────────────────────────────────────
+    // ── Always try the real server first ─────────────────────────────────
     try {
       const res = await apiClient.post('/auth/login', { email, password });
-      const { token, user } = res.data;
-      localStorage.setItem('emr_token', token);
+      const { user } = res.data;
       localStorage.setItem('emr_user', JSON.stringify(user));
-      set({ user, token });
+      localStorage.removeItem('emr_is_demo');
+      set({ user, token: 'cookie-auth' });
       return true;
-    } catch { /* server offline — fall through to demo mode */ }
+    } catch (err: any) {
+      // If the server is reachable and returned 401/422, don't fall through to offline
+      const status = err?.response?.status;
+      if (status === 401 || status === 422 || status === 400) return false;
+      // Server offline (network error, 5xx) — fall through to offline fallback if DEV
+    }
 
-    // ── Offline demo fallback (built-in accounts) ─────────────────────
+    // ── Offline dev fallback (built-in accounts) — DEV only ─────────────
     if (import.meta.env.DEV) {
-      const DEMO_USERS: Record<string, AuthUser & { password: string }> = {
-        'admin@medicos.local':     { id:'usr-admin-001', name:'System Admin',    email:'admin@medicos.local',     role:'admin',        hospitalId:'hsp-001', password:'Admin@123' },
-        'dr.sharma@medicos.local': { id:'usr-doc-001',   name:'Dr. Priya Sharma',email:'dr.sharma@medicos.local', role:'doctor',       hospitalId:'hsp-001', password:'Doctor@123' },
-        'reception@medicos.local': { id:'usr-rcpt-001',  name:'Anita Patel',     email:'reception@medicos.local', role:'receptionist', hospitalId:'hsp-001', password:'Recept@123' },
-        'lab@medicos.local':       { id:'usr-lab-001',   name:'Lab Tech (Demo)', email:'lab@medicos.local',       role:'lab_technician',hospitalId:'hsp-001', password:'Demo@123' },
-        'pharmacy@medicos.local':  { id:'usr-pharm-001', name:'Pharmacist (Demo)',email:'pharmacy@medicos.local', role:'pharmacist',    hospitalId:'hsp-001', password:'Demo@123' },
-        'billing@medicos.local':   { id:'usr-bill-001',  name:'Billing (Demo)',  email:'billing@medicos.local',   role:'billing',       hospitalId:'hsp-001', password:'Demo@123' },
-        'nurse@medicos.local':     { id:'usr-nurse-001', name:'Nurse (Demo)',    email:'nurse@medicos.local',     role:'nurse',         hospitalId:'hsp-001', password:'Demo@123' },
-      };
-
-      const demo = DEMO_USERS[email.toLowerCase().trim()];
+      const demo = DEV_FALLBACK_USERS[email.toLowerCase().trim()];
       if (demo && demo.password === password) {
         const { password: _, ...user } = demo;
         const fakeToken = 'offline-demo-token';
-        localStorage.setItem('emr_token', fakeToken);
+        localStorage.setItem('emr_is_demo', 'true');
         localStorage.setItem('emr_user', JSON.stringify(user));
         set({ user, token: fakeToken });
         return true;
@@ -70,8 +91,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: () => {
-    localStorage.removeItem('emr_token');
+    // Fire-and-forget — don't block UI on server response
+    apiClient.post('/auth/logout').catch(() => { /* ignore */ });
+    
     localStorage.removeItem('emr_user');
+    localStorage.removeItem('emr_is_demo');
     set({ user: null, token: null });
   },
 }));

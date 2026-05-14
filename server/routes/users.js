@@ -4,10 +4,14 @@ const bcrypt = require('bcryptjs');
 const { v4: uuid } = require('uuid');
 const { query, queryOne, run, auditLog } = require('../db/database');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const v = require('../middleware/validate');
 
 const ip = req => req.ip || null;
 
 const adminOnly = [authMiddleware, requireRole('admin')];
+
+const VALID_ROLES = ['doctor','receptionist','nurse','lab_technician','pharmacist','admin','billing'];
+const VALID_STAFF_TYPES = ['front_desk', 'pharmacy'];
 
 // GET /api/users/doctors — list all doctors for booking
 router.get('/doctors', authMiddleware, (req, res) => {
@@ -35,35 +39,47 @@ router.get('/', ...adminOnly, (req, res) => {
 });
 
 // POST /api/users — create new staff member
-router.post('/', ...adminOnly, (req, res) => {
-  const { name, email, password, role, staff_type = 'front_desk',
-          specialization, phone, license_number,
-          consultation_fee = 0, followup_fee = 0 } = req.body;
-  if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
-  if (!['doctor','receptionist','nurse','lab_technician','pharmacist','admin','billing'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+router.post('/',
+  ...adminOnly,
+  v.body({
+    name:     [v.required, v.str(2, 100)],
+    email:    [v.required, v.str(3, 254), v.email],
+    password: [v.required, v.password(8)],
+    role:     [v.required, v.oneOf(VALID_ROLES)],
+    phone:    [v.phone],
+    staff_type: [v.oneOf(VALID_STAFF_TYPES)],
+    consultation_fee: [v.float(0, 99999)],
+    followup_fee:     [v.float(0, 99999)],
+  }),
+  (req, res) => {
+    const { name, email, password, role, staff_type = 'front_desk',
+            specialization, phone, license_number,
+            consultation_fee = 0, followup_fee = 0 } = req.body;
 
-  const existing = queryOne('SELECT id FROM users WHERE email = ?', [email.toLowerCase().trim()]);
-  if (existing) return res.status(409).json({ error: 'Email already registered' });
+    const emailNorm = email.toLowerCase().trim();
+    const existing = queryOne('SELECT id FROM users WHERE email = ?', [emailNorm]);
+    if (existing) return res.status(409).json({ error: 'Email already registered' });
 
-  const id = uuid();
-  const hashed = bcrypt.hashSync(password, 10);
-  run(
-    `INSERT INTO users (id, name, email, password, role, staff_type, hospital_id,
-                        specialization, phone, license_number,
-                        consultation_fee, followup_fee, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-    [id, name.trim(), email.toLowerCase().trim(), hashed, role,
-     role === 'receptionist' ? (staff_type || 'front_desk') : 'front_desk',
-     req.user.hospitalId || 'hsp-001',
-     specialization || null, phone || null, license_number || null,
-     role === 'doctor' ? (parseFloat(consultation_fee) || 0) : 0,
-     role === 'doctor' ? (parseFloat(followup_fee) || 0) : 0]
-  );
-  auditLog(req.user.id, 'CREATE_STAFF', 'users', id, { name: name.trim(), email: email.toLowerCase().trim(), role, staff_type }, ip(req));
-  res.status(201).json({ id, name: name.trim(), email: email.toLowerCase().trim(), role,
-    staff_type: role === 'receptionist' ? (staff_type || 'front_desk') : 'front_desk',
-    specialization, phone, consultation_fee, followup_fee, is_active: 1 });
-});
+    const id = uuid();
+    const hashed = bcrypt.hashSync(password, 10);
+    run(
+      `INSERT INTO users (id, name, email, password, role, staff_type, hospital_id,
+                          specialization, phone, license_number,
+                          consultation_fee, followup_fee, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      [id, name.trim(), emailNorm, hashed, role,
+       role === 'receptionist' ? (staff_type || 'front_desk') : 'front_desk',
+       req.user.hospitalId || 'hsp-001',
+       specialization || null, phone || null, license_number || null,
+       role === 'doctor' ? (parseFloat(consultation_fee) || 0) : 0,
+       role === 'doctor' ? (parseFloat(followup_fee) || 0) : 0]
+    );
+    auditLog(req.user.id, 'CREATE_STAFF', 'users', id, { name: name.trim(), email: emailNorm, role, staff_type }, ip(req));
+    res.status(201).json({ id, name: name.trim(), email: emailNorm, role,
+      staff_type: role === 'receptionist' ? (staff_type || 'front_desk') : 'front_desk',
+      specialization, phone, consultation_fee, followup_fee, is_active: 1 });
+  }
+);
 
 // PATCH /api/users/:id — update staff member
 router.patch('/:id', ...adminOnly, (req, res) => {
@@ -89,15 +105,20 @@ router.patch('/:id', ...adminOnly, (req, res) => {
 });
 
 // POST /api/users/:id/reset-password — reset password
-router.post('/:id/reset-password', ...adminOnly, (req, res) => {
-  const { password } = req.body;
-  if (!password || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  const user = queryOne('SELECT id FROM users WHERE id = ? AND hospital_id = ?', [req.params.id, req.user.hospitalId || 'hsp-001']);
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  const hashed = bcrypt.hashSync(password, 10);
-  run('UPDATE users SET password=? WHERE id=?', [hashed, req.params.id]);
-  auditLog(req.user.id, 'RESET_PASSWORD', 'users', req.params.id, {}, ip(req));
-  res.json({ success: true });
-});
+router.post('/:id/reset-password',
+  ...adminOnly,
+  v.body({
+    password: [v.required, v.password(8)],
+  }),
+  (req, res) => {
+    const { password } = req.body;
+    const user = queryOne('SELECT id FROM users WHERE id = ? AND hospital_id = ?', [req.params.id, req.user.hospitalId || 'hsp-001']);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const hashed = bcrypt.hashSync(password, 10);
+    run('UPDATE users SET password=? WHERE id=?', [hashed, req.params.id]);
+    auditLog(req.user.id, 'RESET_PASSWORD', 'users', req.params.id, {}, ip(req));
+    res.json({ success: true });
+  }
+);
 
 module.exports = router;

@@ -13,12 +13,27 @@ export const apiClient = axios.create({
   baseURL: SERVER_URL,
   timeout: 8000,
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 });
 
-// Attach JWT token to every request
+// Helper to get cookie value by name
+function getCookie(name: string) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift();
+  return null;
+}
+
+// Attach CSRF token to every request
 apiClient.interceptors.request.use(config => {
-  const token = localStorage.getItem('emr_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const csrf = getCookie('csrf_token');
+  if (csrf) config.headers['X-CSRF-Token'] = csrf;
+  
+  // Keep fallback for mobile/offline if needed
+  const localToken = localStorage.getItem('emr_token');
+  if (localToken && !config.headers.Authorization) {
+    config.headers.Authorization = `Bearer ${localToken}`;
+  }
   return config;
 });
 

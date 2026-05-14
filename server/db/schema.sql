@@ -301,27 +301,15 @@ CREATE TABLE IF NOT EXISTS audit_log (
 INSERT OR IGNORE INTO hospitals (id, name, type, city, phone) VALUES
   ('hsp-001', 'Medicos General Hospital', 'General', 'Mumbai', '+91-22-12345678');
 
--- Default super admin password: Admin@123 (bcrypt hash)
+-- Default super admin
 INSERT OR IGNORE INTO users (id, name, email, password, role, hospital_id) VALUES
-  ('usr-admin-001', 'System Admin', 'admin@medicos.local',
-   '$2a$10$MLl//yWnowDtuDfcC1Y.B.IqOugs3ssrG0KH97n3Kpdx5aYKx/A2i',
+  ('usr-admin-001', 'Adinath Admin', 'adinathmade@medicos.com',
+   '$2a$10$1LADfgd8HQ0allD5lnGLb.dVxH.sVVCt07WYykl48x0vryQ1fCgLO',
    'admin', 'hsp-001');
-
--- Default doctor: Doctor@123
-INSERT OR IGNORE INTO users (id, name, email, password, role, hospital_id) VALUES
-  ('usr-doc-001', 'Dr. Priya Sharma', 'dr.sharma@medicos.local',
-   '$2a$10$P7E4OHjw26NaRnJESh85OudIwEUwJxfILUIyBEy.jO3Q2WiEo4O2e',
-   'doctor', 'hsp-001');
-
--- Default receptionist: Recept@123
-INSERT OR IGNORE INTO users (id, name, email, password, role, hospital_id) VALUES
-  ('usr-rcpt-001', 'Anita Patel', 'reception@medicos.local',
-   '$2a$10$DUYts83FR/pnoqZ0xE4qgOK4dPZ8VLK4Dmnkm29C1AhpfAc4md5jW',
-   'receptionist', 'hsp-001');
 
 -- Sample patient
 INSERT OR IGNORE INTO patients
   (id, uhid, hospital_id, name, age, sex, blood_group, phone, allergies, chronic_conditions, registered_by)
 VALUES
   ('pat-001', 'UHID-001-000001', 'hsp-001', 'Rahul Mehta', 34, 'Male', 'B+',
-   '+91-9876543210', '["Penicillin"]', '["Hypertension", "Type 2 Diabetes"]', 'usr-rcpt-001');
+   '+91-9876543210', '["Penicillin"]', '["Hypertension", "Type 2 Diabetes"]', 'usr-admin-001');

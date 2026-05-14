@@ -4,6 +4,7 @@ import { apiClient } from '../api/client';
 import { db, markPending } from '../db/localDB';
 import { useAuthStore } from '../store/authStore';
 import { v4 as uuid } from 'uuid';
+import { validatePhone, validateRequired, isValidPhone, extractServerError } from '../utils/validation';
 
 const STATUS_FLOW: Record<string,string> = { 'Scheduled':'Confirmed','Confirmed':'Checked-In','Checked-In':'Completed' };
 const STATUS_COLOR: Record<string,string> = { 'Scheduled':'badge-info','Confirmed':'badge-success','Checked-In':'badge-purple','Completed':'badge-neutral','Cancelled':'badge-danger','No-Show':'badge-warning' };
@@ -23,6 +24,7 @@ export default function AppointmentsPage({ onNavigate, data }: { onNavigate:(p:s
   const [newPatient, setNewPatient] = useState<{name:string; phone:string; sex:'Male'|'Female'|'Other'}>({ name: '', phone: '', sex: 'Male' });
   const [patientSearch, setPatientSearch] = useState('');
   const [saving, setSaving] = useState(false);
+  const [bookError, setBookError] = useState('');
   const set = (k:string, v:string) => setForm(f=>({...f,[k]:v}));
 
   const load = useCallback(async () => {
@@ -58,6 +60,27 @@ export default function AppointmentsPage({ onNavigate, data }: { onNavigate:(p:s
 
   async function bookAppt(e:React.FormEvent) {
     e.preventDefault();
+    setBookError('');
+
+    // Client-side validation
+    if (!isNewPatient && !form.patient_id) {
+      setBookError('Please select a patient.');
+      return;
+    }
+    if (isNewPatient) {
+      if (!newPatient.name.trim()) { setBookError('Patient name is required.'); return; }
+      if (newPatient.phone && !isValidPhone(newPatient.phone)) {
+        setBookError('Please enter a valid phone number.'); return;
+      }
+    }
+    if (!form.doctor_id) { setBookError('Please select a doctor.'); return; }
+    if (!form.date)      { setBookError('Date is required.'); return; }
+    if (!form.time)      { setBookError('Time is required.'); return; }
+    // Prevent booking more than 1 year ahead
+    const apptDate = new Date(form.date);
+    const daysForward = (apptDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    if (daysForward > 365) { setBookError('Cannot book more than 1 year in advance.'); return; }
+
     setSaving(true);
     
     let finalPatientId = form.patient_id;
@@ -66,7 +89,13 @@ export default function AppointmentsPage({ onNavigate, data }: { onNavigate:(p:s
         const pRes = await apiClient.post('/patients', newPatient);
         finalPatientId = pRes.data.id;
         setPatients(p => [...p, pRes.data]);
-      } catch {
+      } catch (err) {
+        const status = (err as any)?.response?.status;
+        if (status === 422 || status === 400) {
+          setBookError(extractServerError(err));
+          setSaving(false);
+          return;
+        }
         const pId = uuid();
         const payload = { id: pId, uhid: 'UHID-001-' + Math.floor(Math.random()*1000000), hospital_id: user?.hospitalId||'hsp-001', ...newPatient, allergies: [], chronic_conditions: [], current_medications: [], is_active: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
         await markPending(db.patients, payload, 'create');
@@ -78,9 +107,20 @@ export default function AppointmentsPage({ onNavigate, data }: { onNavigate:(p:s
 
     const id = uuid(); const now = new Date().toISOString();
     const payload: any = { id, hospital_id: user?.hospitalId||'hsp-001', ...form, patient_id: finalPatientId, doctor_id: form.doctor_id||user?.id, status:'Scheduled', token_number: appts.length+1, created_at:now, updated_at:now };
-    try { const r = await apiClient.post('/appointments', payload); setAppts(a=>[...a,r.data]); }
-    catch { await markPending(db.appointments, payload,'create'); await db.appointments.put(payload); setAppts(a=>[...a,payload]); }
-    finally { setSaving(false); setShowAdd(false); setIsNewPatient(false); }
+    try {
+      const r = await apiClient.post('/appointments', payload);
+      setAppts(a=>[...a,r.data]);
+    } catch (err) {
+      const status = (err as any)?.response?.status;
+      if (status === 422 || status === 400 || status === 409) {
+        setBookError(extractServerError(err));
+        setSaving(false);
+        return;
+      }
+      await markPending(db.appointments, payload,'create');
+      await db.appointments.put(payload);
+      setAppts(a=>[...a,payload]);
+    } finally { setSaving(false); setShowAdd(false); setIsNewPatient(false); }
   }
 
   const filteredPatients = patients.filter(p => !patientSearch || p.name?.toLowerCase().includes(patientSearch.toLowerCase()) || p.phone?.includes(patientSearch) || p.uhid?.includes(patientSearch));
@@ -100,6 +140,7 @@ export default function AppointmentsPage({ onNavigate, data }: { onNavigate:(p:s
             <div className="modal-header"><div className="modal-title">📅 Book Appointment</div><button className="modal-close" onClick={()=>setShowAdd(false)}>✕</button></div>
             <form onSubmit={bookAppt}>
               <div className="modal-body">
+                {bookError && <div className="alert alert-danger" style={{marginBottom:12}}>⚠️ {bookError}</div>}
                 <div style={{display:'flex',gap:10,marginBottom:12}}>
                   <label style={{display:'flex',gap:4,alignItems:'center'}}>
                     <input type="radio" checked={!isNewPatient} onChange={()=>setIsNewPatient(false)} /> Existing Patient

@@ -27,6 +27,18 @@ router.post('/push', authMiddleware, (req, res) => {
         continue;
       }
 
+      // ── Hospital isolation — reject cross-hospital records ─────────────
+      if (req.user.role !== 'super_admin' &&
+          payload.hospital_id && payload.hospital_id !== req.user.hospitalId) {
+        results.push({ id: payload?.id, status: 'rejected', reason: 'hospital mismatch' });
+        continue;
+      }
+
+      // Force correct hospital_id even if client sends wrong one
+      if (req.user.role !== 'super_admin' && payload.hospital_id === undefined) {
+        payload.hospital_id = req.user.hospitalId;
+      }
+
       try {
         const op = (operation || '').toLowerCase();
 

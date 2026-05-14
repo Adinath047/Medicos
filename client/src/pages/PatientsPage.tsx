@@ -4,6 +4,10 @@ import { apiClient } from '../api/client';
 import { db, markPending } from '../db/localDB';
 import { useAuthStore } from '../store/authStore';
 import { v4 as uuid } from 'uuid';
+import {
+  validateRequired, validateEmail, validatePhone, validateNotFutureDate,
+  validateRange, collectErrors, isValid, extractServerError, type FieldErrors,
+} from '../utils/validation';
 
 const BLOOD_GROUPS = ['A+','A-','B+','B-','AB+','AB-','O+','O-'];
 const ALLERGIES_COMMON = ['Penicillin','Sulfa drugs','Aspirin','Ibuprofen','Peanuts','Latex','Shellfish','Eggs','Milk'];
@@ -17,13 +21,30 @@ function AddPatientModal({ onClose, onDone }: { onClose: ()=>void; onDone: (p:an
   const [customAllergyInput, setCustomAllergyInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const set = (k: string, v: string) => {
+    setForm(f => ({ ...f, [k]: v }));
+    // Clear the field error as user types
+    setFieldErrors(fe => { const n = { ...fe }; delete n[k]; return n; });
+  };
 
   const age = form.dob ? Math.floor((Date.now() - new Date(form.dob).getTime()) / (365.25*24*3600*1000)) : null;
 
+  function validate(): boolean {
+    const errs = collectErrors({
+      name:     validateRequired(form.name, 'Full name'),
+      phone:    validatePhone(form.phone),
+      email:    validateEmail(form.email),
+      dob:      validateNotFutureDate(form.dob, 'Date of birth'),
+      ec_phone: validatePhone(form.ec_phone),
+    });
+    setFieldErrors(errs);
+    return isValid(errs);
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim()) { setError('Name is required'); return; }
+    if (!validate()) return;
     setSaving(true); setError('');
     const now = new Date().toISOString();
     const id  = uuid();
@@ -43,10 +64,25 @@ function AddPatientModal({ onClose, onDone }: { onClose: ()=>void; onDone: (p:an
     try {
       const res = await apiClient.post('/patients', payload);
       onDone(res.data);
-    } catch {
+    } catch (err) {
+      const msg = extractServerError(err);
+      // If it's a server-side validation error, show it; otherwise save offline
+      const status = (err as any)?.response?.status;
+      if (status === 422 || status === 400) {
+        setError(msg);
+        setSaving(false);
+        return;
+      }
       await markPending(db.patients, payload, 'create');
       onDone(payload);
     } finally { setSaving(false); }
+  }
+
+  const fieldStyle = (k: string): React.CSSProperties =>
+    fieldErrors[k] ? { borderColor: 'var(--danger)' } : {};
+
+  function FieldErr({ k }: { k: string }) {
+    return fieldErrors[k] ? <div style={{ color:'var(--danger)', fontSize:11, marginTop:3 }}>⚠ {fieldErrors[k]}</div> : null;
   }
 
   return (
@@ -62,12 +98,19 @@ function AddPatientModal({ onClose, onDone }: { onClose: ()=>void; onDone: (p:an
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
               <div style={{gridColumn:'1/-1'}} className="form-group">
                 <label className="form-label">Full Name *</label>
-                <input className="input" placeholder="Patient full name" value={form.name} onChange={e=>set('name',e.target.value)} required />
+                <input className="input" placeholder="Patient full name" value={form.name}
+                  onChange={e=>set('name',e.target.value)}
+                  style={fieldStyle('name')} />
+                <FieldErr k="name" />
               </div>
               <div className="form-group">
                 <label className="form-label">Date of Birth</label>
-                <input className="input" type="date" value={form.dob} onChange={e=>set('dob',e.target.value)} />
+                <input className="input" type="date" value={form.dob}
+                  onChange={e=>set('dob',e.target.value)}
+                  max={new Date().toISOString().split('T')[0]}
+                  style={fieldStyle('dob')} />
                 {age !== null && <span style={{fontSize:11,color:'var(--text-muted)'}}>Age: {age} years</span>}
+                <FieldErr k="dob" />
               </div>
               <div className="form-group">
                 <label className="form-label">Sex *</label>
@@ -82,9 +125,12 @@ function AddPatientModal({ onClose, onDone }: { onClose: ()=>void; onDone: (p:an
                   {BLOOD_GROUPS.map(g=><option key={g}>{g}</option>)}
                 </select>
               </div>
+          {/* Phone + Address row */}
               <div className="form-group">
                 <label className="form-label">Phone</label>
-                <input className="input" type="tel" placeholder="+91 98765 43210" value={form.phone} onChange={e=>set('phone',e.target.value)} />
+                <input className="input" type="tel" placeholder="+91 98765 43210" value={form.phone}
+                  onChange={e=>set('phone',e.target.value)} style={fieldStyle('phone')} />
+                <FieldErr k="phone" />
               </div>
               <div style={{gridColumn:'1/-1'}} className="form-group">
                 <label className="form-label">Address</label>
@@ -126,9 +172,15 @@ function AddPatientModal({ onClose, onDone }: { onClose: ()=>void; onDone: (p:an
 
             {/* Emergency contact */}
             <div style={{background:'var(--surface-alt)',borderRadius:'var(--radius)',padding:14,display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-              <div style={{gridColumn:'1/-1',fontSize:12,fontWeight:700,color:'var(--text-muted)',marginBottom:2}}>🆘 Emergency Contact</div>
+              <div style={{gridColumn:'1/-1',fontSize:12,fontWeight:700,color:'var(--text-muted)',marginBottom:2}}>Emergency Contact</div>
               <div className="form-group"><label className="form-label">Name</label><input className="input" placeholder="Contact name" value={form.ec_name} onChange={e=>set('ec_name',e.target.value)} /></div>
-              <div className="form-group"><label className="form-label">Phone</label><input className="input" placeholder="+91 …" value={form.ec_phone} onChange={e=>set('ec_phone',e.target.value)} /></div>
+              <div className="form-group">
+                <label className="form-label">Phone</label>
+                <input className="input" placeholder="+91 …" value={form.ec_phone}
+                  onChange={e=>set('ec_phone',e.target.value)}
+                  style={fieldStyle('ec_phone')} />
+                <FieldErr k="ec_phone" />
+              </div>
               <div className="form-group"><label className="form-label">Relation</label><input className="input" placeholder="e.g. Spouse" value={form.ec_relation} onChange={e=>set('ec_relation',e.target.value)} /></div>
             </div>
           </div>
