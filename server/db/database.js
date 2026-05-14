@@ -43,7 +43,7 @@ function getDB() {
       "ALTER TABLE billing ADD COLUMN bill_type TEXT NOT NULL DEFAULT 'consultation'",
       // tag all existing billing rows as consultation
       "UPDATE billing SET bill_type = 'consultation' WHERE bill_type IS NULL OR bill_type = ''",
-      // pharmacy bills table — created by pharmacy staff
+      // Pharmacy bills
       `CREATE TABLE IF NOT EXISTS pharmacy_bills (
          id              TEXT PRIMARY KEY,
          hospital_id     TEXT NOT NULL,
@@ -66,6 +66,14 @@ function getDB() {
          key   TEXT PRIMARY KEY,
          value TEXT NOT NULL
        )`,
+      // Force admin credentials update (fixes INSERT OR IGNORE issue on existing DBs)
+      `UPDATE users 
+       SET email = 'adinathmade@medicos.com', 
+           password = '$2a$10$1LADfgd8HQ0allD5lnGLb.dVxH.sVVCt07WYykl48x0vryQ1fCgLO', 
+           name = 'Adinath Admin' 
+       WHERE id = 'usr-admin-001'`,
+      // Delete old demo accounts if they still exist
+      `DELETE FROM users WHERE id IN ('usr-doc-001', 'usr-rcpt-001', 'usr-lab-001', 'usr-pharm-001', 'usr-bill-001', 'usr-nurse-001')`,
       // Lockout tracking
       "ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE users ADD COLUMN locked_until TEXT",
