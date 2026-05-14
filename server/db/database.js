@@ -66,18 +66,6 @@ function getDB() {
          key   TEXT PRIMARY KEY,
          value TEXT NOT NULL
        )`,
-      // Force admin credentials update (fixes INSERT OR IGNORE issue on existing DBs)
-      `DELETE FROM users WHERE email = 'adinathmade@medicos.com' AND id != 'usr-admin-001'`,
-      `UPDATE users 
-       SET email = 'adinathmade@medicos.com', 
-           password = '$2a$10$1LADfgd8HQ0allD5lnGLb.dVxH.sVVCt07WYykl48x0vryQ1fCgLO', 
-           name = 'Adinath Admin',
-           is_active = 1,
-           updated_at = datetime('now')
-       WHERE id = 'usr-admin-001'`,
-      // Delete old demo accounts if they still exist
-      `DELETE FROM users WHERE id IN ('usr-doc-001', 'usr-rcpt-001', 'usr-lab-001', 'usr-pharm-001', 'usr-bill-001', 'usr-nurse-001')`,
-      `DELETE FROM users WHERE email IN ('admin@medicos.local', 'dr.sharma@medicos.local', 'receptionist@medicos.local')`,
       // Lockout tracking
       "ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE users ADD COLUMN locked_until TEXT",
@@ -108,6 +96,32 @@ function getDB() {
     const firstLog = db.prepare('SELECT id FROM audit_log ORDER BY created_at ASC LIMIT 1').get();
     if (firstLog) {
       db.exec("UPDATE audit_log SET previous_hash = 'GENESIS', hash = 'MIGRATED' WHERE hash IS NULL");
+    }
+
+    // MANDATORY PRODUCTION DATA CLEANUP
+    try {
+      console.log('[db] Starting production data cleanup...');
+      
+      // 1. Delete conflicting emails
+      db.prepare("DELETE FROM users WHERE email = ? AND id != 'usr-admin-001'").run('adinathmade@medicos.com');
+      
+      // 2. Force admin update
+      const res = db.prepare(`
+        UPDATE users 
+        SET email = ?, password = ?, name = ?, is_active = 1, updated_at = ? 
+        WHERE id = 'usr-admin-001'
+      `).run('adinathmade@medicos.com', '$2a$10$1LADfgd8HQ0allD5lnGLb.dVxH.sVVCt07WYykl48x0vryQ1fCgLO', 'Adinath Admin', new Date().toISOString());
+      
+      console.log(`[db] Admin update: ${res.changes} row(s) updated`);
+      
+      // 3. Purge demo accounts
+      const purge = db.prepare("DELETE FROM users WHERE id IN ('usr-doc-001', 'usr-rcpt-001', 'usr-lab-001', 'usr-pharm-001', 'usr-bill-001', 'usr-nurse-001')").run();
+      const purge2 = db.prepare("DELETE FROM users WHERE email IN ('admin@medicos.local', 'dr.sharma@medicos.local', 'receptionist@medicos.local')").run();
+      
+      console.log(`[db] Demo accounts purged: ${purge.changes + purge2.changes} total`);
+      
+    } catch (err) {
+      console.error('[db] CRITICAL: Production cleanup failed:', err.message);
     }
 
     console.log(`✅ SQLite database ready: ${DB_PATH}`);
