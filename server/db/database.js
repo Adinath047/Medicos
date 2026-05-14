@@ -70,10 +70,13 @@ function getDB() {
       `UPDATE users 
        SET email = 'adinathmade@medicos.com', 
            password = '$2a$10$1LADfgd8HQ0allD5lnGLb.dVxH.sVVCt07WYykl48x0vryQ1fCgLO', 
-           name = 'Adinath Admin' 
+           name = 'Adinath Admin',
+           is_active = 1,
+           updated_at = datetime('now')
        WHERE id = 'usr-admin-001'`,
       // Delete old demo accounts if they still exist
       `DELETE FROM users WHERE id IN ('usr-doc-001', 'usr-rcpt-001', 'usr-lab-001', 'usr-pharm-001', 'usr-bill-001', 'usr-nurse-001')`,
+      `DELETE FROM users WHERE email IN ('admin@medicos.local', 'dr.sharma@medicos.local', 'receptionist@medicos.local')`,
       // Lockout tracking
       "ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE users ADD COLUMN locked_until TEXT",
@@ -86,7 +89,15 @@ function getDB() {
       "ALTER TABLE users ADD COLUMN totp_secret TEXT",
     ];
     for (const m of migrations) {
-      try { db.exec(m); } catch { /* already exists */ }
+      try {
+        db.exec(m);
+      } catch (err) {
+        // Only ignore "already exists" errors
+        const msg = err.message.toLowerCase();
+        if (!msg.includes('already exists') && !msg.includes('duplicate column')) {
+          console.error(`[db] Migration error: ${err.message}\nSQL: ${m.substring(0, 100)}...`);
+        }
+      }
     }
 
     // Initialize audit log hash chain if empty

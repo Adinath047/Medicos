@@ -50,11 +50,11 @@ async function initCloud() {
     cloudAvailable = true;
     console.log('☁  Supabase connected — cloud sync active ✅');
 
+    // Push local → cloud on startup (ensures our migrations win)
+    await pushToCloud();
+
     // Pull cloud → local on startup
     await pullFromCloud();
-
-    // Push local → cloud on startup
-    await pushToCloud();
 
     // Sync every 30 seconds
     setInterval(syncCycle, 30_000);
