@@ -130,9 +130,19 @@ router.delete('/:id', ...adminOnly, (req, res) => {
   const user = queryOne('SELECT name FROM users WHERE id = ? AND hospital_id = ?', [req.params.id, req.user.hospitalId || 'hsp-001']);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  run('DELETE FROM users WHERE id = ?', [req.params.id]);
-  auditLog(req.user.id, 'DELETE_STAFF', 'users', req.params.id, { name: user.name }, ip(req));
-  res.json({ success: true });
+  try {
+    run('DELETE FROM users WHERE id = ?', [req.params.id]);
+    auditLog(req.user.id, 'DELETE_STAFF', 'users', req.params.id, { name: user.name }, ip(req));
+    res.json({ success: true });
+  } catch (err) {
+    if (err.message.includes('FOREIGN KEY constraint failed')) {
+      return res.status(409).json({
+        error: 'Cannot delete staff member',
+        message: 'This staff member has existing records (appointments, prescriptions, or bills) and cannot be removed for data integrity. Please Deactivate them instead.'
+      });
+    }
+    throw err; // Re-throw other unexpected errors
+  }
 });
 
 // POST /api/users/verify-license — mock verification with government data

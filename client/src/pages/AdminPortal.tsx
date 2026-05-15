@@ -310,7 +310,7 @@ function EditModal({ staff, onClose, onDone }: { staff: any; onClose: () => void
                     await apiClient.delete(`/users/${staff.id}`);
                     onDone({ ...staff, _deleted: true });
                   } catch (err: any) {
-                    setError(err?.response?.data?.error || 'Delete failed');
+                    setError(err?.response?.data?.message || err?.response?.data?.error || 'Delete failed');
                     setSaving(false);
                   }
                 }}>
