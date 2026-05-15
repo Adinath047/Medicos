@@ -198,6 +198,24 @@ function EditUserModal({ user, onClose, onDone }: { user:any; onClose:()=>void; 
             </div>
           </div>
           <div className="modal-footer">
+            <div style={{ marginRight:'auto' }}>
+              <button type="button" className="btn btn-ghost btn-sm"
+                style={{ color:'var(--danger)' }}
+                disabled={saving}
+                onClick={async () => {
+                  if (!confirm(`Permanently remove ${user.name}?`)) return;
+                  setSaving(true);
+                  try {
+                    await apiClient.delete(`/users/${user.id}`);
+                    onDone({ ...user, _deleted: true });
+                  } catch (err: any) {
+                    setError(err?.response?.data?.error || 'Delete failed');
+                    setSaving(false);
+                  }
+                }}>
+                🗑 Delete
+              </button>
+            </div>
             <button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? <><div className="spinner spinner-sm"/>Saving…</> : 'Save Changes'}
@@ -302,7 +320,14 @@ export default function SettingsPage() {
       {activeTab === 'users' && isAdmin && (
         <>
           {showAdd && <AddUserModal onClose={()=>setShowAdd(false)} onDone={u=>{ setStaff(s=>[u,...s]); setShowAdd(false); }} />}
-          {editUser && <EditUserModal user={editUser} onClose={()=>setEditUser(null)} onDone={updated=>{ setStaff(s=>s.map(x=>x.id===updated.id?{...x,...updated}:x)); setEditUser(null); }} />}
+          {editUser && <EditUserModal user={editUser} onClose={()=>setEditUser(null)} onDone={updated=>{
+            if (updated._deleted) {
+              setStaff(s => s.filter(x => x.id !== updated.id));
+            } else {
+              setStaff(s => s.map(x=>x.id===updated.id?{...x,...updated}:x));
+            }
+            setEditUser(null);
+          }} />}
 
           {/* Stats row */}
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))',gap:10}}>

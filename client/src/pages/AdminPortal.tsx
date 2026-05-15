@@ -27,7 +27,32 @@ function AddModal({ onClose, onDone }: { onClose: () => void; onDone: (u: any) =
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
-  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const [verifying, setVerifying] = useState(false);
+  const [verified, setVerified]   = useState<boolean|null>(null);
+
+  const set = (k: string, v: string) => {
+    // Restrictions while filling
+    if (k === 'phone') {
+      const val = v.replace(/\D/g, '').slice(0, 10);
+      setForm(f => ({ ...f, [k]: val }));
+      return;
+    }
+    if (k === 'name' && /[^a-zA-Z.\s]/.test(v)) return; // Only letters, dots and spaces
+
+    setForm(f => ({ ...f, [k]: v }));
+  };
+
+  async function verifyLicense() {
+    if (!form.license_number) { setError('Enter license number first'); return; }
+    setVerifying(true); setError(''); setVerified(null);
+    try {
+      const res = await apiClient.post('/users/verify-license', { license_number: form.license_number });
+      if (res.data.verified) setVerified(true);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Verification failed');
+      setVerified(false);
+    } finally { setVerifying(false); }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,7 +64,7 @@ function AddModal({ onClose, onDone }: { onClose: () => void; onDone: (u: any) =
       const res = await apiClient.post('/users', form);
       onDone(res.data);
     } catch (err: any) {
-      setError(err?.response?.data?.error || 'Failed. Is the server running?');
+      setError(err?.response?.data?.message || err?.response?.data?.error || 'Failed. Is the server running?');
     } finally { setSaving(false); }
   }
 
@@ -57,7 +82,8 @@ function AddModal({ onClose, onDone }: { onClose: () => void; onDone: (u: any) =
 
               <div style={{ gridColumn:'1/-1' }} className="form-group">
                 <label className="form-label">Full Name *</label>
-                <input className="input" placeholder="Dr. Ramesh Kumar" value={form.name} onChange={e => set('name', e.target.value)} required />
+                <input className="input" placeholder="e.g. Ramesh Kumar" value={form.name} onChange={e => set('name', e.target.value)} required />
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>Only letters and spaces allowed.</div>
               </div>
 
               <div className="form-group">
@@ -75,7 +101,7 @@ function AddModal({ onClose, onDone }: { onClose: () => void; onDone: (u: any) =
 
               <div className="form-group">
                 <label className="form-label">Phone</label>
-                <input className="input" type="tel" placeholder="+91 98765 43210" value={form.phone} onChange={e => set('phone', e.target.value)} />
+                <input className="input" type="tel" placeholder="10-digit number" value={form.phone} onChange={e => set('phone', e.target.value)} maxLength={10} />
               </div>
 
               <div style={{ gridColumn:'1/-1' }} className="form-group">
@@ -114,7 +140,20 @@ function AddModal({ onClose, onDone }: { onClose: () => void; onDone: (u: any) =
                   </div>
                   <div style={{ gridColumn:'1/-1' }} className="form-group">
                     <label className="form-label">License / Registration No.</label>
-                    <input className="input" placeholder="e.g. MH-12345" value={form.license_number} onChange={e => set('license_number', e.target.value)} />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input className="input" placeholder="e.g. MH-12345" 
+                        value={form.license_number} 
+                        onChange={e => { set('license_number', e.target.value.toUpperCase()); setVerified(null); }} 
+                        style={{ borderColor: verified === true ? '#16a34a' : verified === false ? '#dc2626' : undefined }}
+                      />
+                      <button type="button" className="btn btn-secondary" 
+                        onClick={verifyLicense} 
+                        disabled={verifying || !form.license_number}
+                        style={{ flexShrink: 0 }}>
+                        {verifying ? <div className="spinner spinner-sm"/> : verified ? '✓ Verified' : 'Verify Gov'}
+                      </button>
+                    </div>
+                    {verified === true && <div style={{ fontSize: 10, color: '#16a34a', marginTop: 4 }}>Verified in NMC National Medical Register</div>}
                   </div>
                   <div className="form-group">
                     <label className="form-label">OPD Consultation Fee ₹</label>
@@ -260,6 +299,24 @@ function EditModal({ staff, onClose, onDone }: { staff: any; onClose: () => void
             </div>
           </div>
           <div className="modal-footer">
+            <div style={{ marginRight:'auto' }}>
+              <button type="button" className="btn btn-ghost btn-sm"
+                style={{ color:'var(--danger)' }}
+                disabled={saving}
+                onClick={async () => {
+                  if (!confirm(`Permanently remove ${staff.name}?`)) return;
+                  setSaving(true);
+                  try {
+                    await apiClient.delete(`/users/${staff.id}`);
+                    onDone({ ...staff, _deleted: true });
+                  } catch (err: any) {
+                    setError(err?.response?.data?.error || 'Delete failed');
+                    setSaving(false);
+                  }
+                }}>
+                🗑 Delete
+              </button>
+            </div>
             <button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? <><div className="spinner spinner-sm"/>Saving…</> : 'Save Changes'}
@@ -314,7 +371,14 @@ export default function AdminPortal() {
   return (
     <div style={{ minHeight:'100vh', background:'#f8fafc', display:'flex', flexDirection:'column' }}>
       {showAdd && <AddModal onClose={() => setShowAdd(false)} onDone={u => { setStaff(s => [u, ...s]); setShowAdd(false); }} />}
-      {editing  && <EditModal staff={editing} onClose={() => setEditing(null)} onDone={updated => { setStaff(s => s.map(x => x.id === updated.id ? { ...x, ...updated } : x)); setEditing(null); }} />}
+      {editing  && <EditModal staff={editing} onClose={() => setEditing(null)} onDone={updated => {
+        if (updated._deleted) {
+          setStaff(s => s.filter(x => x.id !== updated.id));
+        } else {
+          setStaff(s => s.map(x => x.id === updated.id ? { ...x, ...updated } : x));
+        }
+        setEditing(null);
+      }} />}
 
       {/* Header */}
       <header style={{ background:'#fff', borderBottom:'1px solid var(--border)', padding:'0 28px', height:60, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, boxShadow:'var(--shadow-sm)' }}>

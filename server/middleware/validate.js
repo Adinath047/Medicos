@@ -33,7 +33,7 @@ function inRange(v, min, max) {
 /**
  * Usage:
  *   const { body, query, params } = validate;
- *   router.post('/', body({ name: [required, str(1, 100)], email: [required, email] }), handler)
+ *   router.post('/', body({ password: [required, password(6)], email: [required, email] }), handler)
  *
  * Each field spec is an array of checker functions that return an error string
  * or null/undefined on pass.
@@ -108,13 +108,14 @@ function uuid(v) {
   if (!isUUID(String(v))) return 'must be a valid UUID';
 }
 
-function password(minLen = 8) {
+function password(minLen = 6) {
   return (v) => {
     if (!v) return;
     if (v.length < minLen) return `must be at least ${minLen} characters`;
-    if (!/[A-Z]/.test(v)) return 'must contain at least one uppercase letter';
-    if (!/[a-z]/.test(v)) return 'must contain at least one lowercase letter';
-    if (!/\d/.test(v))    return 'must contain at least one digit';
+    // Complexity checks removed for better UX during setup/demo
+    // if (!/[A-Z]/.test(v)) return 'must contain at least one uppercase letter';
+    // if (!/[a-z]/.test(v)) return 'must contain at least one lowercase letter';
+    // if (!/\d/.test(v))    return 'must contain at least one digit';
   };
 }
 

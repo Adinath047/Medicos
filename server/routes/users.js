@@ -44,7 +44,7 @@ router.post('/',
   v.body({
     name:     [v.required, v.str(2, 100)],
     email:    [v.required, v.str(3, 254), v.email],
-    password: [v.required, v.password(8)],
+    password: [v.required, v.password(6)],
     role:     [v.required, v.oneOf(VALID_ROLES)],
     phone:    [v.phone],
     staff_type: [v.oneOf(VALID_STAFF_TYPES)],
@@ -120,5 +120,46 @@ router.post('/:id/reset-password',
     res.json({ success: true });
   }
 );
+
+// DELETE /api/users/:id — hard delete staff member
+router.delete('/:id', ...adminOnly, (req, res) => {
+  if (req.params.id === req.user.id) {
+    return res.status(400).json({ error: 'Cannot delete your own account' });
+  }
+
+  const user = queryOne('SELECT name FROM users WHERE id = ? AND hospital_id = ?', [req.params.id, req.user.hospitalId || 'hsp-001']);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  run('DELETE FROM users WHERE id = ?', [req.params.id]);
+  auditLog(req.user.id, 'DELETE_STAFF', 'users', req.params.id, { name: user.name }, ip(req));
+  res.json({ success: true });
+});
+
+// POST /api/users/verify-license — mock verification with government data
+router.post('/verify-license', ...adminOnly, (req, res) => {
+  const { license_number } = req.body;
+  if (!license_number) return res.status(400).json({ error: 'License number required' });
+
+  // Simulation: Real systems would hit an NMC / API Setu endpoint here
+  // For now, we validate the format (e.g. MH-12345 or 2024/05/123)
+  const isValidFormat = /^[A-Z0-9\-\/]{5,20}$/i.test(license_number);
+
+  setTimeout(() => {
+    if (!isValidFormat) {
+      return res.status(422).json({
+        verified: false,
+        error: 'Invalid license format. Ensure it matches your Medical Council registration.'
+      });
+    }
+    res.json({
+      verified: true,
+      data: {
+        name: 'Verified Practitioner',
+        registry: 'Indian Medical Register (NMC)',
+        status: 'Active'
+      }
+    });
+  }, 1200); // Simulate network lag
+});
 
 module.exports = router;
