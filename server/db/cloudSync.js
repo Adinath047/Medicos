@@ -84,7 +84,14 @@ async function setupCloudSchema() {
       id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'doctor',
       hospital_id TEXT, staff_id TEXT, phone TEXT, specialization TEXT,
-      license_number TEXT, photo_url TEXT, is_active INTEGER DEFAULT 1,
+      license_number TEXT, photo_url TEXT, 
+      staff_type TEXT DEFAULT 'front_desk',
+      consultation_fee REAL DEFAULT 0,
+      followup_fee REAL DEFAULT 0,
+      failed_login_attempts INTEGER DEFAULT 0,
+      locked_until TEXT,
+      totp_secret TEXT,
+      is_active INTEGER DEFAULT 1,
       created_at TEXT DEFAULT now()::text, updated_at TEXT DEFAULT now()::text
     )`,
     `CREATE TABLE IF NOT EXISTS patients (
@@ -136,7 +143,16 @@ async function setupCloudSchema() {
       discount REAL DEFAULT 0, net_amount REAL DEFAULT 0, paid_amount REAL DEFAULT 0,
       payment_mode TEXT DEFAULT 'Cash', payment_status TEXT DEFAULT 'Pending',
       invoice_number TEXT UNIQUE, notes TEXT, billed_by TEXT, patient_name TEXT,
+      bill_type TEXT DEFAULT 'consultation',
       created_at TEXT DEFAULT now()::text
+    )`,
+    `CREATE TABLE IF NOT EXISTS pharmacy_bills (
+      id TEXT PRIMARY KEY, hospital_id TEXT NOT NULL, patient_id TEXT NOT NULL,
+      prescription_id TEXT, pharmacist_id TEXT, medicines TEXT DEFAULT '[]',
+      total_amount REAL DEFAULT 0, discount REAL DEFAULT 0, net_amount REAL DEFAULT 0,
+      paid_amount REAL DEFAULT 0, payment_mode TEXT DEFAULT 'Cash', 
+      payment_status TEXT DEFAULT 'Pending', invoice_number TEXT, notes TEXT,
+      created_at TEXT DEFAULT now()::text, updated_at TEXT DEFAULT now()::text
     )`,
   ];
 
