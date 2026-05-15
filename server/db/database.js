@@ -13,6 +13,7 @@ let db;
 
 function getDB() {
   if (!db) {
+    console.log(`[db] Initializing DatabaseSync with path: ${path.resolve(DB_PATH)}`);
     db = new DatabaseSync(DB_PATH);
 
     // Performance pragmas (exec handles multi-line SQL)

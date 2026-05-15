@@ -58,7 +58,10 @@ router.post('/login',
     const email    = req.body.email.toLowerCase().trim();
     const password = req.body.password;
 
-    const user = queryOne('SELECT id, email, password, is_active, role FROM users WHERE email = ?', [email]);
+    const user = queryOne(
+      'SELECT id, name, email, password, is_active, role, hospital_id, staff_type, photo_url, totp_secret, failed_login_attempts, locked_until FROM users WHERE email = ?',
+      [email]
+    );
     console.log(`[auth] Login attempt: ${email} | Found: ${!!user} | Active: ${user?.is_active}`);
     
     if (!user || user.is_active !== 1) {

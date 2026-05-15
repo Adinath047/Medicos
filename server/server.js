@@ -140,9 +140,10 @@ app.post('/api/cloud-sync', require('./middleware/auth').authMiddleware, async (
 });
 
 app.get('/api/auth/debug-users', (req, res) => {
-  const { query } = require('./db/database');
+  const { query, getDB } = require('./db/database');
+  const path = require('path');
   const users = query('SELECT id, email, is_active, role FROM users');
-  res.json({ count: users.length, users });
+  res.json({ count: users.length, dbPath: path.resolve(process.env.DB_PATH || '../../emr_data.sqlite3'), users });
 });
 
 // ── Serve React build (production) ────────────────────────────────────────
