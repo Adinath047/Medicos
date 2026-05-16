@@ -145,6 +145,16 @@ router.delete('/:id', ...adminOnly, (req, res) => {
   }
 });
 
+// PATCH /api/users/:id/status — Toggle staff active/inactive
+router.patch('/:id/status', ...adminOnly, (req, res) => {
+  const { is_active } = req.body;
+  if (typeof is_active !== 'number') return res.status(400).json({ error: 'is_active (0 or 1) required' });
+
+  run('UPDATE users SET is_active = ?, updated_at = datetime("now") WHERE id = ?', [is_active, req.params.id]);
+  auditLog(req.user.id, 'UPDATE_STAFF_STATUS', 'users', req.params.id, { is_active }, ip(req));
+  res.json({ success: true });
+});
+
 // POST /api/users/verify-license — mock verification with government data
 router.post('/verify-license', ...adminOnly, (req, res) => {
   const { license_number } = req.body;

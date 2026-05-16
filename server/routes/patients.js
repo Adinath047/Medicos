@@ -40,6 +40,13 @@ router.get('/', authMiddleware, (req, res) => {
   const params = [];
 
   if (hid) { sql += ' AND hospital_id = ?'; params.push(hid); }
+  
+  // Doctor Privacy: only see own patients unless searching
+  if (role === 'doctor' && !q) {
+    sql += ' AND primary_doctor_id = ?';
+    params.push(req.user.id);
+  }
+
   if (q)   {
     const qTrim = q.trim().slice(0, 100);
     const s = `%${qTrim}%`;
@@ -53,8 +60,8 @@ router.get('/', authMiddleware, (req, res) => {
 
   const rows = query(sql, params).map(parsePatient);
   const total = queryOne(
-    `SELECT COUNT(*) as n FROM patients WHERE is_active = 1${hid ? ' AND hospital_id = ?' : ''}`,
-    hid ? [hid] : []
+    `SELECT COUNT(*) as n FROM patients WHERE is_active = 1${hid ? ' AND hospital_id = ?' : ''}${role === 'doctor' && !q ? ' AND primary_doctor_id = ?' : ''}`,
+    [...(hid ? [hid] : []), ...(role === 'doctor' && !q ? [req.user.id] : [])]
   ).n;
 
   res.json({ patients: rows, total, limit, offset });

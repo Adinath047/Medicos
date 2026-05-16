@@ -310,12 +310,29 @@ function EditModal({ staff, onClose, onDone }: { staff: any; onClose: () => void
                     await apiClient.delete(`/users/${staff.id}`);
                     onDone({ ...staff, _deleted: true });
                   } catch (err: any) {
-                    setError(err?.response?.data?.message || err?.response?.data?.error || 'Delete failed');
+                    const msg = err?.response?.data?.message || err?.response?.data?.error || 'Delete failed';
+                    setError(msg);
                     setSaving(false);
                   }
                 }}>
-                🗑 Delete
+                🗑️ Delete
               </button>
+              {error && error.includes('records') && (
+                <button type="button" className="btn btn-secondary" 
+                  onClick={async () => {
+                    setSaving(true);
+                    try {
+                      await apiClient.patch(`/users/${staff.id}/status`, { is_active: 0 });
+                      onDone({ ...staff, is_active: 0 });
+                    } catch (err) {
+                      setError('Deactivation failed');
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}>
+                  ⏹️ Deactivate Instead
+                </button>
+              )}
             </div>
             <button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
