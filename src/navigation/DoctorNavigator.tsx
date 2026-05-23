@@ -30,7 +30,7 @@ function DoctorDrawerContent(props: any) {
     <Sidebar
       items={NAV_ITEMS}
       activeScreen={active}
-      onNavigate={(screen) => props.navigation.navigate(screen)}
+      onNavigate={(screen: string) => props.navigation.navigate(screen)}
     />
   );
 }

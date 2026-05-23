@@ -19,12 +19,12 @@ const Drawer = createDrawerNavigator();
 const Stack = createStackNavigator();
 
 const NAV_ITEMS = [
-  { label: 'Dashboard',   icon: '🏠', screen: 'AdminDashboard' },
-  { label: 'Patients',    icon: '👥', screen: 'AdminPatients' },
-  { label: 'Doctors',     icon: '🩺', screen: 'AdminDoctors' },
+  { label: 'Dashboard',    icon: '🏠', screen: 'AdminDashboard' },
+  { label: 'Patients',     icon: '👥', screen: 'AdminPatients' },
+  { label: 'Doctors',      icon: '🩺', screen: 'AdminDoctors' },
   { label: 'Beds & Vitals', icon: '🛏️', screen: 'AdminBeds', badge: 2 },
-  { label: 'Billing',     icon: '🧾', screen: 'AdminBilling' },
-  { label: 'Profile',     icon: '👤', screen: 'AdminProfile' },
+  { label: 'Billing',      icon: '🧾', screen: 'AdminBilling' },
+  { label: 'Profile',      icon: '👤', screen: 'AdminProfile' },
 ];
 
 // Drawer content (our custom Sidebar)
@@ -34,7 +34,7 @@ function AdminDrawerContent(props: any) {
     <Sidebar
       items={NAV_ITEMS}
       activeScreen={active}
-      onNavigate={(screen) => props.navigation.navigate(screen)}
+      onNavigate={(screen: string) => props.navigation.navigate(screen)}
     />
   );
 }
