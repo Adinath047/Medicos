@@ -10,14 +10,18 @@ interface AuthState {
   updatePhoto: (photoURL: string) => void;
 }
 
+// Default user — app opens directly as Admin without requiring login
+const DEFAULT_USER = USERS.find((u) => u.role === 'admin') ?? USERS[0];
+
 export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  role: null,
+  // Pre-set admin user so the login screen is never shown
+  user: DEFAULT_USER,
+  role: DEFAULT_USER.role,
   isLoading: false,
 
   login: async (email: string, password: string) => {
     set({ isLoading: true });
-    await new Promise((r) => setTimeout(r, 800)); // simulate network
+    await new Promise((r) => setTimeout(r, 800));
     const found = USERS.find(
       (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
     );
@@ -29,7 +33,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     return false;
   },
 
-  logout: () => set({ user: null, role: null }),
+  logout: () => set({ user: DEFAULT_USER, role: DEFAULT_USER.role }),
 
   updatePhoto: (photoURL: string) =>
     set((state) => ({ user: state.user ? { ...state.user, photoURL } : null })),

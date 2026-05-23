@@ -4,7 +4,6 @@ import { useAuthStore } from './store/authStore';
 import { useSync } from './sync/useSync';
 
 // Pages
-import LoginPage from './pages/LoginPage';
 import AdminPortal from './pages/AdminPortal';
 import PatientsPage from './pages/PatientsPage';
 import PatientDetail from './pages/PatientDetail';
@@ -196,10 +195,8 @@ export default function App() {
     </div>
   );
 
-  if (!user) return <LoginPage />;
-
   // ── Admin: full-page portal, no sidebar ─────────────────────────────
-  if (user.role === 'admin') {
+  if (user?.role === 'admin') {
     return <AdminPortal />;
   }
 
@@ -261,7 +258,7 @@ export default function App() {
           <div className="topbar-right">
             <SyncBadge />
             <div style={{ width:32, height:32, borderRadius:'50%', background:'var(--primary-grad)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:12, flexShrink:0 }}>
-              {user.name.split(' ').map(w => w[0]).join('').slice(0,2)}
+              {user?.name?.split(' ').map(w => w[0]).join('').slice(0,2) ?? ''}
             </div>
           </div>
         </header>

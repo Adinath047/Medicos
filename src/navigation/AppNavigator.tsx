@@ -4,13 +4,12 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useAuthStore } from '../store/authStore';
 import { Colors } from '../constants/colors';
 
-import AuthStack from './AuthStack';
 import AdminNavigator from './AdminNavigator';
 import DoctorNavigator from './DoctorNavigator';
 import PatientNavigator from './PatientNavigator';
 
 export default function AppNavigator() {
-  const { user, role, isLoading } = useAuthStore();
+  const { role, isLoading } = useAuthStore();
 
   if (isLoading) {
     return (
@@ -21,12 +20,11 @@ export default function AppNavigator() {
   }
 
   const renderNavigator = () => {
-    if (!user) return <AuthStack />;
     switch (role) {
       case 'admin':   return <AdminNavigator />;
       case 'doctor':  return <DoctorNavigator />;
       case 'patient': return <PatientNavigator />;
-      default:        return <AuthStack />;
+      default:        return <AdminNavigator />;
     }
   };
 
