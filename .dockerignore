@@ -1,0 +1,15 @@
+.git
+.gitignore
+.expo
+node_modules
+client/node_modules
+server/node_modules
+client/dist
+emr_data.sqlite3
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+.env
+.env.local

@@ -9,28 +9,10 @@ import DoctorNavigator from './DoctorNavigator';
 import PatientNavigator from './PatientNavigator';
 
 export default function AppNavigator() {
-  const { role, isLoading } = useAuthStore();
-
-  if (isLoading) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </View>
-    );
-  }
-
-  const renderNavigator = () => {
-    switch (role) {
-      case 'admin':   return <AdminNavigator />;
-      case 'doctor':  return <DoctorNavigator />;
-      case 'patient': return <PatientNavigator />;
-      default:        return <AdminNavigator />;
-    }
-  };
-
+  // Directly render the AdminNavigator as authentication is removed.
   return (
     <NavigationContainer>
-      {renderNavigator()}
+      <AdminNavigator />
     </NavigationContainer>
   );
 }
