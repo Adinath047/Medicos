@@ -17,6 +17,7 @@ import BillingPage from './pages/BillingPage';
 import PharmacyBillingPage from './pages/PharmacyBillingPage';
 import SettingsPage from './pages/SettingsPage';
 import FrontDeskDashboard from './pages/FrontDeskDashboard';
+import LoginPage from './pages/LoginPage';
 
 // ── SVG Icons ─────────────────────────────────────────────────────────
 const Icons: Record<string, JSX.Element> = {
@@ -194,6 +195,10 @@ export default function App() {
       <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading Medicos EMR…</div>
     </div>
   );
+
+  if (!user) {
+    return <LoginPage />;
+  }
 
   // ── Admin: full-page portal, no sidebar ─────────────────────────────
   if (user?.role === 'admin') {

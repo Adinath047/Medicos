@@ -25,7 +25,7 @@ function validateMedicine(med, index) {
 }
 
 // GET /api/prescriptions?patient_id=&doctor_id=&encounter_id=
-router.get('/', authMiddleware, (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
   const { patient_id, doctor_id, encounter_id, limit = 20 } = req.query;
   const { hospitalId, role } = req.user;
   const hid = role === 'super_admin' ? null : hospitalId;
@@ -37,49 +37,62 @@ router.get('/', authMiddleware, (req, res) => {
              JOIN users u ON rx.doctor_id = u.id
              WHERE 1=1`;
   const params = [];
-  if (hid)         { sql += ' AND rx.hospital_id = ?';    params.push(hid); }
-  if (patient_id)  { sql += ' AND rx.patient_id = ?';     params.push(patient_id); }
-  if (doctor_id)   { sql += ' AND rx.doctor_id = ?';      params.push(doctor_id); }
-  if (encounter_id){ sql += ' AND rx.encounter_id = ?';   params.push(encounter_id); }
-  sql += ' ORDER BY rx.created_at DESC LIMIT ?';
+  let index = 1;
+  if (hid)         { sql += ` AND rx.hospital_id = $${index++}`;    params.push(hid); }
+  if (patient_id)  { sql += ` AND rx.patient_id = $${index++}`;     params.push(patient_id); }
+  if (doctor_id)   { sql += ` AND rx.doctor_id = $${index++}`;      params.push(doctor_id); }
+  if (encounter_id){ sql += ` AND rx.encounter_id = $${index++}`;   params.push(encounter_id); }
+  sql += ` ORDER BY rx.created_at DESC LIMIT $${index++}`;
   params.push(safeLimit);
 
-  res.json(query(sql, params).map(parseRx));
+  try {
+    const rows = await query(sql, params);
+    res.json(rows.map(parseRx));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/prescriptions/:id
-router.get('/:id', authMiddleware, (req, res) => {
-  const row = queryOne(
-    `SELECT rx.*, p.name as patient_name, p.uhid, p.age, p.sex, p.blood_group, p.weight, p.allergies,
-            u.name as doctor_name, u.phone as doctor_phone, u.email as doctor_email
-     FROM prescriptions rx
-     JOIN patients p ON rx.patient_id = p.id
-     JOIN users u ON rx.doctor_id = u.id
-     WHERE rx.id = ?`,
-    [req.params.id]
-  );
-  if (!row) return res.status(404).json({ error: 'Not found' });
-  res.json(parseJsonFields(row, ['medicines', 'allergies']));
+router.get('/:id', authMiddleware, async (req, res) => {
+  try {
+    const row = await queryOne(
+      `SELECT rx.*, p.name as patient_name, p.uhid, p.age, p.sex, p.blood_group, p.weight, p.allergies,
+              u.name as doctor_name, u.phone as doctor_phone, u.email as doctor_email
+       FROM prescriptions rx
+       JOIN patients p ON rx.patient_id = p.id
+       JOIN users u ON rx.doctor_id = u.id
+       WHERE rx.id = $1`,
+      [req.params.id]
+    );
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    res.json(parseJsonFields(row, ['medicines', 'allergies']));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/prescriptions/slip/:token — public (no auth), for shareable link
-router.get('/slip/:token', (req, res) => {
+router.get('/slip/:token', async (req, res) => {
   const token = req.params.token;
-  // Token is 12-char uppercase hex — validate format
   if (!/^[A-F0-9]{12}$/.test(token)) {
     return res.status(400).json({ error: 'Invalid slip token format' });
   }
-  const row = queryOne(
-    `SELECT rx.*, p.name as patient_name, p.uhid, p.age, p.sex, p.blood_group, p.weight, p.allergies,
-            u.name as doctor_name, u.phone as doctor_phone
-     FROM prescriptions rx
-     JOIN patients p ON rx.patient_id = p.id
-     JOIN users u ON rx.doctor_id = u.id
-     WHERE rx.slip_token = ?`,
-    [token]
-  );
-  if (!row) return res.status(404).json({ error: 'Slip not found or expired' });
-  res.json(parseJsonFields(row, ['medicines', 'allergies']));
+  try {
+    const row = await queryOne(
+      `SELECT rx.*, p.name as patient_name, p.uhid, p.age, p.sex, p.blood_group, p.weight, p.allergies,
+              u.name as doctor_name, u.phone as doctor_phone
+       FROM prescriptions rx
+       JOIN patients p ON rx.patient_id = p.id
+       JOIN users u ON rx.doctor_id = u.id
+       WHERE rx.slip_token = $1`,
+      [token]
+    );
+    if (!row) return res.status(404).json({ error: 'Slip not found or expired' });
+    res.json(parseJsonFields(row, ['medicines', 'allergies']));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/prescriptions
@@ -91,7 +104,7 @@ router.post('/',
     patient_weight: [v.float(0.5, 600)],
     advice:         [v.str(0, 3000)],
   }),
-  (req, res) => {
+  async (req, res) => {
     const {
       patient_id, doctor_id, encounter_id,
       medicines = [], advice, follow_up_date, patient_weight,
@@ -114,29 +127,35 @@ router.post('/',
       return res.status(422).json({ error: 'Invalid medicine entries', details: medErrors });
     }
 
-    // Verify patient exists
-    const patient = queryOne('SELECT id FROM patients WHERE id = ? AND is_active = 1', [patient_id]);
-    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+    try {
+      // Verify patient exists
+      const patient = await queryOne('SELECT id FROM patients WHERE id = $1 AND is_active = 1', [patient_id]);
+      if (!patient) return res.status(404).json({ error: 'Patient not found' });
 
-    const hospitalId = bodyHid || req.user.hospitalId || 'hsp-001';
-    const docId      = doctor_id || req.user.id;
-    const id         = uuid();
-    const slipToken  = uuid().replace(/-/g, '').slice(0, 12).toUpperCase();
+      const hospitalId = bodyHid || req.user.hospitalId || 'hsp-001';
+      const docId      = doctor_id || req.user.id;
+      const id         = uuid();
+      const slipToken  = uuid().replace(/-/g, '').slice(0, 12).toUpperCase();
 
-    run(
-      `INSERT INTO prescriptions
-        (id, hospital_id, patient_id, doctor_id, encounter_id,
-         medicines, advice, follow_up_date, patient_weight,
-         slip_token, created_by_role)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [id, hospitalId, patient_id, docId, encounter_id||null,
-       JSON.stringify(medicines), advice||null, follow_up_date||null,
-       patient_weight||null, slipToken, req.user.role]
-    );
+      await run(
+        `INSERT INTO prescriptions
+          (id, hospital_id, patient_id, doctor_id, encounter_id,
+           medicines, advice, follow_up_date, patient_weight,
+           slip_token, created_by_role)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [id, hospitalId, patient_id, docId, encounter_id||null,
+         JSON.stringify(medicines), advice||null, follow_up_date||null,
+         patient_weight||null, slipToken, req.user.role]
+      );
 
-    auditLog(req.user.id, 'CREATE_PRESCRIPTION', 'prescriptions', id,
-      { patient_id, medicine_count: medicines.length }, ip(req));
-    res.status(201).json(parseRx(queryOne('SELECT * FROM prescriptions WHERE id = ?', [id])));
+      auditLog(req.user.id, 'CREATE_PRESCRIPTION', 'prescriptions', id,
+        { patient_id, medicine_count: medicines.length }, ip(req));
+        
+      const created = await queryOne('SELECT * FROM prescriptions WHERE id = $1', [id]);
+      res.status(201).json(parseRx(created));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   }
 );
 
@@ -148,10 +167,7 @@ router.put('/:id',
     patient_weight: [v.float(0.5, 600)],
     advice:         [v.str(0, 3000)],
   }),
-  (req, res) => {
-    const existing = queryOne('SELECT id FROM prescriptions WHERE id = ?', [req.params.id]);
-    if (!existing) return res.status(404).json({ error: 'Prescription not found' });
-
+  async (req, res) => {
     const { medicines, advice, follow_up_date, patient_weight, is_printed } = req.body;
 
     if (medicines !== undefined) {
@@ -164,12 +180,21 @@ router.put('/:id',
       }
     }
 
-    run(
-      'UPDATE prescriptions SET medicines=?, advice=?, follow_up_date=?, patient_weight=?, is_printed=? WHERE id=?',
-      [JSON.stringify(medicines||[]), advice||null, follow_up_date||null, patient_weight||null, is_printed ? 1 : 0, req.params.id]
-    );
-    auditLog(req.user.id, 'UPDATE_PRESCRIPTION', 'prescriptions', req.params.id, { is_printed }, ip(req));
-    res.json(parseRx(queryOne('SELECT * FROM prescriptions WHERE id = ?', [req.params.id])));
+    try {
+      const existing = await queryOne('SELECT id FROM prescriptions WHERE id = $1', [req.params.id]);
+      if (!existing) return res.status(404).json({ error: 'Prescription not found' });
+
+      await run(
+        'UPDATE prescriptions SET medicines=$1, advice=$2, follow_up_date=$3, patient_weight=$4, is_printed=$5 WHERE id=$6',
+        [JSON.stringify(medicines||[]), advice||null, follow_up_date||null, patient_weight||null, is_printed ? 1 : 0, req.params.id]
+      );
+      
+      auditLog(req.user.id, 'UPDATE_PRESCRIPTION', 'prescriptions', req.params.id, { is_printed }, ip(req));
+      const updated = await queryOne('SELECT * FROM prescriptions WHERE id = $1', [req.params.id]);
+      res.json(parseRx(updated));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   }
 );
 

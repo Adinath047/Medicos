@@ -1,7 +1,7 @@
 // server/routes/patients.js
 const router = require('express').Router();
 const { v4: uuid } = require('uuid');
-const { query, queryOne, run, transaction, parseJsonFields, auditLog } = require('../db/database');
+const { query, queryOne, run, parseJsonFields, auditLog } = require('../db/database');
 const { authMiddleware } = require('../middleware/auth');
 const v = require('../middleware/validate');
 const { encryptFields, decryptFields, hmacFingerprint } = require('../utils/crypto');
@@ -27,7 +27,7 @@ const VALID_BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 const VALID_GOV_ID_TYPES = ['Aadhaar', 'PAN', 'Passport', 'Voter ID', 'Driving License', 'Other'];
 
 // GET /api/patients — list (scoped to hospital)
-router.get('/', authMiddleware, (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
   const { hospitalId, role } = req.user;
   let { q, limit = 50, offset = 0 } = req.query;
 
@@ -38,12 +38,16 @@ router.get('/', authMiddleware, (req, res) => {
   const hid = role === 'super_admin' ? null : hospitalId;
   let sql = 'SELECT * FROM patients WHERE is_active = 1';
   const params = [];
+  let index = 1;
 
-  if (hid) { sql += ' AND hospital_id = ?'; params.push(hid); }
+  if (hid) { 
+    sql += ` AND hospital_id = $${index++}`; 
+    params.push(hid); 
+  }
   
   // Doctor Privacy: only see own patients unless searching
   if (role === 'doctor' && !q) {
-    sql += ' AND primary_doctor_id = ?';
+    sql += ` AND primary_doctor_id = $${index++}`;
     params.push(req.user.id);
   }
 
@@ -51,27 +55,46 @@ router.get('/', authMiddleware, (req, res) => {
     const qTrim = q.trim().slice(0, 100);
     const s = `%${qTrim}%`;
     const h = hmacFingerprint(qTrim);
-    sql += ' AND (name LIKE ? OR phone_hash = ? OR uhid LIKE ?)';
+    sql += ` AND (name ILIKE $${index++} OR phone_hash = $${index++} OR uhid ILIKE $${index++})`;
     params.push(s, h, s);
   }
 
-  sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  sql += ` ORDER BY created_at DESC LIMIT $${index++} OFFSET $${index++}`;
   params.push(limit, offset);
 
-  const rows = query(sql, params).map(parsePatient);
-  const total = queryOne(
-    `SELECT COUNT(*) as n FROM patients WHERE is_active = 1${hid ? ' AND hospital_id = ?' : ''}${role === 'doctor' && !q ? ' AND primary_doctor_id = ?' : ''}`,
-    [...(hid ? [hid] : []), ...(role === 'doctor' && !q ? [req.user.id] : [])]
-  ).n;
+  try {
+    const rows = (await query(sql, params)).map(parsePatient);
+    
+    let countSql = `SELECT COUNT(*) as n FROM patients WHERE is_active = 1`;
+    const countParams = [];
+    let countIndex = 1;
+    if (hid) {
+      countSql += ` AND hospital_id = $${countIndex++}`;
+      countParams.push(hid);
+    }
+    if (role === 'doctor' && !q) {
+      countSql += ` AND primary_doctor_id = $${countIndex++}`;
+      countParams.push(req.user.id);
+    }
+    
+    const totalRow = await queryOne(countSql, countParams);
+    const total = totalRow ? parseInt(totalRow.n || 0) : 0;
 
-  res.json({ patients: rows, total, limit, offset });
+    res.json({ patients: rows, total, limit, offset });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/patients/:id
-router.get('/:id', authMiddleware, (req, res) => {
-  const row = queryOne('SELECT * FROM patients WHERE id = ? AND is_active = 1', [req.params.id]);
-  if (!row) return res.status(404).json({ error: 'Patient not found' });
-  res.json(parsePatient(row));
+router.get('/:id', authMiddleware, async (req, res) => {
+  try {
+    const row = await queryOne('SELECT * FROM patients WHERE id = $1 AND is_active = 1', [req.params.id]);
+    if (!row) return res.status(404).json({ error: 'Patient not found' });
+    res.json(parsePatient(row));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/patients
@@ -87,7 +110,7 @@ router.post('/',
     ec_phone:         [v.phone],
     insurance_number: [v.str(0, 80)],
   }),
-  (req, res) => {
+  async (req, res) => {
     const {
       name, dob, age, sex, blood_group, phone, email, address,
       weight, height, allergies = [], chronic_conditions = [], current_medications = [],
@@ -118,41 +141,46 @@ router.post('/',
       return res.status(422).json({ error: 'Validation failed', message: 'age: must be between 0 and 150' });
     }
 
-    const hospitalId = bodyHospId || req.user.hospitalId || 'hsp-001';
-    const count = queryOne('SELECT COUNT(*) as n FROM patients WHERE hospital_id = ?', [hospitalId]).n;
-    const uhid  = req.body.uhid || genUHID(hospitalId, count);
-    const id    = req.body.id   || uuid();
+    try {
+      const hospitalId = bodyHospId || req.user.hospitalId || 'hsp-001';
+      const countRow = await queryOne('SELECT COUNT(*) as n FROM patients WHERE hospital_id = $1', [hospitalId]);
+      const count = countRow ? parseInt(countRow.n || 0) : 0;
+      const uhid  = req.body.uhid || genUHID(hospitalId, count);
+      const id    = req.body.id   || uuid();
 
-    const rawData = {
-      phone: phone || null,
-      email: email || null,
-      address: address || null,
-      dob: dob || null,
-      govt_id_number: govt_id_number || null,
-      ec_phone: ec_phone || null
-    };
-    const encrypted = encryptFields(rawData, SENSITIVE_FIELDS, { addHashes: ['phone'] });
+      const rawData = {
+        phone: phone || null,
+        email: email || null,
+        address: address || null,
+        dob: dob || null,
+        govt_id_number: govt_id_number || null,
+        ec_phone: ec_phone || null
+      };
+      const encrypted = encryptFields(rawData, SENSITIVE_FIELDS, { addHashes: ['phone'] });
 
-    run(
-      `INSERT INTO patients
-        (id, uhid, hospital_id, name, dob, age, sex, blood_group, phone, phone_hash, email, address,
-         weight, height, allergies, chronic_conditions, current_medications,
-         ec_name, ec_phone, ec_relation,
-         govt_id_type, govt_id_number, insurance_provider, insurance_number,
-         primary_doctor_id, notes, registered_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [id, uhid, hospitalId, name.trim(), encrypted.dob, age||null, sex, blood_group||null,
-       encrypted.phone, encrypted.phone_hash || null, encrypted.email, encrypted.address, weight||null, height||null,
-       JSON.stringify(allergies), JSON.stringify(chronic_conditions), JSON.stringify(current_medications),
-       ec_name||null, encrypted.ec_phone, ec_relation||null,
-       govt_id_type||null, encrypted.govt_id_number,
-       insurance_provider||null, insurance_number||null,
-       primary_doctor_id||null, notes||null, req.user.id]
-    );
+      await run(
+        `INSERT INTO patients
+          (id, uhid, hospital_id, name, dob, age, sex, blood_group, phone, phone_hash, email, address,
+           weight, height, allergies, chronic_conditions, current_medications,
+           ec_name, ec_phone, ec_relation,
+           govt_id_type, govt_id_number, insurance_provider, insurance_number,
+           primary_doctor_id, notes, registered_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
+        [id, uhid, hospitalId, name.trim(), encrypted.dob, age||null, sex, blood_group||null,
+         encrypted.phone, encrypted.phone_hash || null, encrypted.email, encrypted.address, weight||null, height||null,
+         JSON.stringify(allergies), JSON.stringify(chronic_conditions), JSON.stringify(current_medications),
+         ec_name||null, encrypted.ec_phone, ec_relation||null,
+         govt_id_type||null, encrypted.govt_id_number,
+         insurance_provider||null, insurance_number||null,
+         primary_doctor_id||null, notes||null, req.user.id]
+      );
 
-    auditLog(req.user.id, 'CREATE_PATIENT', 'patients', id, { name: name.trim(), uhid }, ip(req));
-    const created = queryOne('SELECT * FROM patients WHERE id = ?', [id]);
-    res.status(201).json(parsePatient(created));
+      auditLog(req.user.id, 'CREATE_PATIENT', 'patients', id, { name: name.trim(), uhid }, ip(req));
+      const created = await queryOne('SELECT * FROM patients WHERE id = $1', [id]);
+      res.status(201).json(parsePatient(created));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   }
 );
 
@@ -168,87 +196,100 @@ router.put('/:id',
     blood_group: [v.oneOf(VALID_BLOOD_GROUPS)],
     ec_phone:    [v.phone],
   }),
-  (req, res) => {
-    const existing = queryOne('SELECT id FROM patients WHERE id = ? AND is_active = 1', [req.params.id]);
-    if (!existing) return res.status(404).json({ error: 'Patient not found' });
+  async (req, res) => {
+    try {
+      const existing = await queryOne('SELECT id FROM patients WHERE id = $1 AND is_active = 1', [req.params.id]);
+      if (!existing) return res.status(404).json({ error: 'Patient not found' });
 
-    const {
-      name, dob, age, sex, blood_group, phone, email, address,
-      weight, height, allergies, chronic_conditions, current_medications,
-      ec_name, ec_phone, ec_relation,
-      govt_id_type, govt_id_number,
-      insurance_provider, insurance_number,
-      primary_doctor_id, notes,
-    } = req.body;
+      const {
+        name, dob, age, sex, blood_group, phone, email, address,
+        weight, height, allergies, chronic_conditions, current_medications,
+        ec_name, ec_phone, ec_relation,
+        govt_id_type, govt_id_number,
+        insurance_provider, insurance_number,
+        primary_doctor_id, notes,
+      } = req.body;
 
-    const rawData = {
-      phone: phone || null,
-      email: email || null,
-      address: address || null,
-      dob: dob || null,
-      govt_id_number: govt_id_number || null,
-      ec_phone: ec_phone || null
-    };
-    const encrypted = encryptFields(rawData, SENSITIVE_FIELDS, { addHashes: ['phone'] });
+      const rawData = {
+        phone: phone || null,
+        email: email || null,
+        address: address || null,
+        dob: dob || null,
+        govt_id_number: govt_id_number || null,
+        ec_phone: ec_phone || null
+      };
+      const encrypted = encryptFields(rawData, SENSITIVE_FIELDS, { addHashes: ['phone'] });
 
-    run(
-      `UPDATE patients SET
-        name=?, dob=?, age=?, sex=?, blood_group=?, phone=?, phone_hash=?, email=?, address=?,
-        weight=?, height=?,
-        allergies=?, chronic_conditions=?, current_medications=?,
-        ec_name=?, ec_phone=?, ec_relation=?,
-        govt_id_type=?, govt_id_number=?,
-        insurance_provider=?, insurance_number=?,
-        primary_doctor_id=?, notes=?,
-        updated_at=datetime('now')
-       WHERE id=?`,
-      [name.trim(), encrypted.dob, age||null, sex, blood_group||null, encrypted.phone, encrypted.phone_hash || null, encrypted.email, encrypted.address,
-       weight||null, height||null,
-       JSON.stringify(allergies||[]), JSON.stringify(chronic_conditions||[]), JSON.stringify(current_medications||[]),
-       ec_name||null, encrypted.ec_phone, ec_relation||null,
-       govt_id_type||null, encrypted.govt_id_number,
-       insurance_provider||null, insurance_number||null,
-       primary_doctor_id||null, notes||null, req.params.id]
-    );
+      await run(
+        `UPDATE patients SET
+          name=$1, dob=$2, age=$3, sex=$4, blood_group=$5, phone=$6, phone_hash=$7, email=$8, address=$9,
+          weight=$10, height=$11,
+          allergies=$12, chronic_conditions=$13, current_medications=$14,
+          ec_name=$15, ec_phone=$16, ec_relation=$17,
+          govt_id_type=$18, govt_id_number=$19,
+          insurance_provider=$20, insurance_number=$21,
+          primary_doctor_id=$22, notes=$23,
+          updated_at=now()::text
+         WHERE id=$24`,
+        [name.trim(), encrypted.dob, age||null, sex, blood_group||null, encrypted.phone, encrypted.phone_hash || null, encrypted.email, encrypted.address,
+         weight||null, height||null,
+         JSON.stringify(allergies||[]), JSON.stringify(chronic_conditions||[]), JSON.stringify(current_medications||[]),
+         ec_name||null, encrypted.ec_phone, ec_relation||null,
+         govt_id_type||null, encrypted.govt_id_number,
+         insurance_provider||null, insurance_number||null,
+         primary_doctor_id||null, notes||null, req.params.id]
+      );
 
-    auditLog(req.user.id, 'UPDATE_PATIENT', 'patients', req.params.id, { name }, ip(req));
-    res.json(parsePatient(queryOne('SELECT * FROM patients WHERE id = ?', [req.params.id])));
+      auditLog(req.user.id, 'UPDATE_PATIENT', 'patients', req.params.id, { name }, ip(req));
+      const updated = await queryOne('SELECT * FROM patients WHERE id = $1', [req.params.id]);
+      res.json(parsePatient(updated));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   }
 );
 
 // DELETE /api/patients/:id (soft delete)
-router.delete('/:id', authMiddleware, (req, res) => {
-  const existing = queryOne('SELECT id FROM patients WHERE id = ? AND is_active = 1', [req.params.id]);
-  if (!existing) return res.status(404).json({ error: 'Patient not found' });
-  run("UPDATE patients SET is_active = 0, updated_at = datetime('now') WHERE id = ?", [req.params.id]);
-  auditLog(req.user.id, 'DELETE_PATIENT', 'patients', req.params.id, {}, ip(req));
-  res.json({ success: true });
+router.delete('/:id', authMiddleware, async (req, res) => {
+  try {
+    const existing = await queryOne('SELECT id FROM patients WHERE id = $1 AND is_active = 1', [req.params.id]);
+    if (!existing) return res.status(404).json({ error: 'Patient not found' });
+    await run("UPDATE patients SET is_active = 0, updated_at = now()::text WHERE id = $1", [req.params.id]);
+    auditLog(req.user.id, 'DELETE_PATIENT', 'patients', req.params.id, {}, ip(req));
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/patients/:id/summary — encounters + vitals + prescriptions
-router.get('/:id/summary', authMiddleware, (req, res) => {
-  const patient = queryOne('SELECT * FROM patients WHERE id = ?', [req.params.id]);
-  if (!patient) return res.status(404).json({ error: 'Not found' });
+router.get('/:id/summary', authMiddleware, async (req, res) => {
+  try {
+    const patient = await queryOne('SELECT * FROM patients WHERE id = $1', [req.params.id]);
+    if (!patient) return res.status(404).json({ error: 'Not found' });
 
-  const encounters    = query('SELECT * FROM encounters WHERE patient_id = ? ORDER BY created_at DESC LIMIT 20', [req.params.id]);
-  const latestVitals  = queryOne('SELECT * FROM vitals WHERE patient_id = ? ORDER BY recorded_at DESC LIMIT 1', [req.params.id]);
-  const prescriptions = query('SELECT * FROM prescriptions WHERE patient_id = ? ORDER BY created_at DESC LIMIT 30', [req.params.id]);
-  const rxCount       = prescriptions.length;
-  const apptUpcoming  = query("SELECT * FROM appointments WHERE patient_id = ? ORDER BY date DESC LIMIT 10", [req.params.id]);
+    const encounters    = await query('SELECT * FROM encounters WHERE patient_id = $1 ORDER BY created_at DESC LIMIT 20', [req.params.id]);
+    const latestVitals  = await queryOne('SELECT * FROM vitals WHERE patient_id = $1 ORDER BY recorded_at DESC LIMIT 1', [req.params.id]);
+    const prescriptions = await query('SELECT * FROM prescriptions WHERE patient_id = $1 ORDER BY created_at DESC LIMIT 30', [req.params.id]);
+    const rxCount       = prescriptions.length;
+    const apptUpcoming  = await query("SELECT * FROM appointments WHERE patient_id = $1 ORDER BY date DESC LIMIT 10", [req.params.id]);
 
-  const parsedPrescriptions = prescriptions.map(rx => ({
-    ...rx,
-    medicines: (() => { try { return JSON.parse(rx.medicines || '[]'); } catch { return []; } })(),
-  }));
+    const parsedPrescriptions = prescriptions.map(rx => ({
+      ...rx,
+      medicines: (() => { try { return JSON.parse(rx.medicines || '[]'); } catch { return []; } })(),
+    }));
 
-  res.json({
-    patient:       parsePatient(patient),
-    encounters,
-    latestVitals,
-    prescriptions: parsedPrescriptions,
-    rxCount,
-    apptUpcoming,
-  });
+    res.json({
+      patient:       parsePatient(patient),
+      encounters,
+      latestVitals,
+      prescriptions: parsedPrescriptions,
+      rxCount,
+      apptUpcoming,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

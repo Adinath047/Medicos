@@ -7,7 +7,6 @@ const compression = require('compression');
 const cookieParser= require('cookie-parser');
 const path       = require('path');
 const crypto     = require('crypto');
-const { initCloud, getCloudStatus, syncCycle } = require('./db/cloudSync');
 
 const app  = express();
 const PORT = process.env.PORT || 4000;
@@ -98,52 +97,65 @@ app.use('/api/patient-uploads', require('./routes/patient_uploads'));
 app.use('/api/sync',          require('./routes/sync'));
 
 // ── Dashboard stats ───────────────────────────────────────────────────────
-app.get('/api/dashboard', require('./middleware/auth').authMiddleware, (req, res) => {
+app.get('/api/dashboard', require('./middleware/auth').authMiddleware, async (req, res) => {
   const { query, queryOne } = require('./db/database');
   const { hospitalId } = req.user;
   const hid = hospitalId || 'hsp-001';
 
-  const stats = {
-    totalPatients:     queryOne('SELECT COUNT(*) as n FROM patients WHERE hospital_id = ? AND is_active = 1', [hid]).n,
-    todayEncounters:   queryOne("SELECT COUNT(*) as n FROM encounters WHERE hospital_id = ? AND date(created_at) = date('now')", [hid]).n,
-    todayAppointments: queryOne("SELECT COUNT(*) as n FROM appointments WHERE hospital_id = ? AND date = date('now') AND status != 'Cancelled'", [hid]).n,
-    checkedIn:         queryOne("SELECT COUNT(*) as n FROM appointments WHERE hospital_id = ? AND date = date('now') AND status = 'Checked-In'", [hid]).n,
-    totalDoctors:      queryOne("SELECT COUNT(*) as n FROM users WHERE hospital_id = ? AND role = 'doctor' AND is_active = 1", [hid]).n,
-    pendingBilling:    queryOne("SELECT COUNT(*) as n FROM billing WHERE hospital_id = ? AND payment_status = 'Pending'", [hid]).n,
-    recentPatients:    query(
-      "SELECT id, name, uhid, age, sex, blood_group, phone, created_at FROM patients WHERE hospital_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 5",
+  try {
+    const totalPatientsRow = await queryOne('SELECT COUNT(*) as n FROM patients WHERE hospital_id = $1 AND is_active = 1', [hid]);
+    const todayEncountersRow = await queryOne("SELECT COUNT(*) as n FROM encounters WHERE hospital_id = $1 AND created_at::date = CURRENT_DATE", [hid]);
+    const todayAppointmentsRow = await queryOne("SELECT COUNT(*) as n FROM appointments WHERE hospital_id = $1 AND date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') AND status != 'Cancelled'", [hid]);
+    const checkedInRow = await queryOne("SELECT COUNT(*) as n FROM appointments WHERE hospital_id = $1 AND date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') AND status = 'Checked-In'", [hid]);
+    const totalDoctorsRow = await queryOne("SELECT COUNT(*) as n FROM users WHERE hospital_id = $1 AND role = 'doctor' AND is_active = 1", [hid]);
+    const pendingBillingRow = await queryOne("SELECT COUNT(*) as n FROM billing WHERE hospital_id = $1 AND payment_status = 'Pending'", [hid]);
+    
+    const recentPatients = await query(
+      "SELECT id, name, uhid, age, sex, blood_group, phone, created_at FROM patients WHERE hospital_id = $1 AND is_active = 1 ORDER BY created_at DESC LIMIT 5",
       [hid]
-    ),
-    todayQueue: query(
+    );
+    
+    const todayQueue = await query(
       `SELECT a.*, p.name as patient_name, p.uhid, u.name as doctor_name
        FROM appointments a
        JOIN patients p ON a.patient_id = p.id
        JOIN users u ON a.doctor_id = u.id
-       WHERE a.hospital_id = ? AND a.date = date('now') AND a.status NOT IN ('Cancelled','Completed')
+       WHERE a.hospital_id = $1 AND a.date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') AND a.status NOT IN ('Cancelled','Completed')
        ORDER BY a.token_number ASC LIMIT 10`,
       [hid]
-    ),
-  };
+    );
 
-  res.json(stats);
+    const stats = {
+      totalPatients:     totalPatientsRow ? parseInt(totalPatientsRow.n || 0) : 0,
+      todayEncounters:   todayEncountersRow ? parseInt(todayEncountersRow.n || 0) : 0,
+      todayAppointments: todayAppointmentsRow ? parseInt(todayAppointmentsRow.n || 0) : 0,
+      checkedIn:         checkedInRow ? parseInt(checkedInRow.n || 0) : 0,
+      totalDoctors:      totalDoctorsRow ? parseInt(totalDoctorsRow.n || 0) : 0,
+      pendingBilling:    pendingBillingRow ? parseInt(pendingBillingRow.n || 0) : 0,
+      recentPatients,
+      todayQueue,
+    };
+
+    res.json(stats);
+  } catch (err) {
+    console.error('Error fetching dashboard stats:', err);
+    res.status(500).json({ error: 'Failed to load dashboard stats' });
+  }
 });
 
-// ── Health check + cloud status ─────────────────────────────────────────────
+// ── Health check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
-  const cloud = getCloudStatus();
-  res.json({ status: 'ok', time: new Date().toISOString(), version: '1.0.1', cloud });
+  res.json({ status: 'ok', time: new Date().toISOString(), version: '1.0.1' });
 });
 
-app.post('/api/cloud-sync', require('./middleware/auth').authMiddleware, async (req, res) => {
-  try { await syncCycle(); res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/auth/debug-users', (req, res) => {
-  const { query, getDB } = require('./db/database');
-  const path = require('path');
-  const users = query('SELECT id, email, is_active, role FROM users');
-  res.json({ count: users.length, dbPath: path.resolve(process.env.DB_PATH || '../../emr_data.sqlite3'), users });
+app.get('/api/auth/debug-users', async (req, res) => {
+  try {
+    const { query } = require('./db/database');
+    const users = await query('SELECT id, email, is_active, role FROM users');
+    res.json({ count: users.length, users });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Serve React build (production) ────────────────────────────────────────
@@ -169,9 +181,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`   Local:    http://localhost:${PORT}`);
   console.log(`   Network:  http://0.0.0.0:${PORT}  (accessible on hospital LAN)`);
   console.log(`   API docs: http://localhost:${PORT}/api/health\n`);
-
-  // Start cloud sync after server is up
-  initCloud().catch(err => console.warn('Cloud init error:', err.message));
 });
 
 module.exports = app;
