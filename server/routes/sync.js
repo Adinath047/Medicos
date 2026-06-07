@@ -1,7 +1,8 @@
 // server/routes/sync.js — Offline sync using PostgreSQL
 const router = require('express').Router();
-const { query, queryOne, run, transaction } = require('../db/database');
+const { query, queryOne, run, transaction, parseJsonFields } = require('../db/database');
 const { authMiddleware } = require('../middleware/auth');
+const { encryptFields, decryptFields } = require('../utils/crypto');
 
 const ALLOWED_TABLES = ['patients','encounters','vitals','prescriptions','appointments','billing','medicines'];
 
@@ -94,10 +95,24 @@ router.post('/push', authMiddleware, async (req, res) => {
             const existing = existingRes.rows[0];
             
             if (!existing) {
-              const cols = Object.keys(cleanPayload);
+              let finalPayload = cleanPayload;
+              if (table === 'patients') {
+                const rawData = {
+                  phone: cleanPayload.phone || null,
+                  email: cleanPayload.email || null,
+                  address: cleanPayload.address || null,
+                  dob: cleanPayload.dob || null,
+                  govt_id_number: cleanPayload.govt_id_number || null,
+                  ec_phone: cleanPayload.ec_phone || null
+                };
+                const encrypted = encryptFields(rawData, ['phone', 'email', 'address', 'dob', 'govt_id_number', 'ec_phone'], { addHashes: ['phone'] });
+                finalPayload = { ...cleanPayload, ...encrypted };
+              }
+
+              const cols = Object.keys(finalPayload);
               const ph   = cols.map((_, i) => `$${i + 1}`).join(',');
               const vals = cols.map(c => {
-                const v = cleanPayload[c];
+                const v = finalPayload[c];
                 return (v !== null && typeof v === 'object') ? JSON.stringify(v) : v;
               });
               await client.query(`INSERT INTO ${table} (${cols.join(',')}) VALUES (${ph})`, vals);
@@ -137,9 +152,23 @@ router.post('/push', authMiddleware, async (req, res) => {
             const serverTime = isoTs ? new Date(isoTs).getTime() : 0;
             const clientTime = clientUpdatedAt ? new Date(clientUpdatedAt).getTime() : Date.now();
 
-            if (clientTime >= serverTime) {
+             if (clientTime >= serverTime) {
+              let finalPayload = cleanPayload;
+              if (table === 'patients') {
+                const rawData = {
+                  phone: cleanPayload.phone || null,
+                  email: cleanPayload.email || null,
+                  address: cleanPayload.address || null,
+                  dob: cleanPayload.dob || null,
+                  govt_id_number: cleanPayload.govt_id_number || null,
+                  ec_phone: cleanPayload.ec_phone || null
+                };
+                const encrypted = encryptFields(rawData, ['phone', 'email', 'address', 'dob', 'govt_id_number', 'ec_phone'], { addHashes: ['phone'] });
+                finalPayload = { ...cleanPayload, ...encrypted };
+              }
+
               // Strip key fields that server manages
-              const { id, created_at, updated_at, ...fields } = cleanPayload;
+              const { id, created_at, updated_at, ...fields } = finalPayload;
               const cols = Object.keys(fields);
               const sets = cols.map((c, i) => `${c} = $${i + 1}`).join(', ');
               const vals = [...Object.values(fields).map(v => (v !== null && typeof v === 'object') ? JSON.stringify(v) : v), cleanPayload.id];
@@ -216,7 +245,15 @@ router.get('/pull', authMiddleware, async (req, res) => {
         params.push(hid); 
       }
       
-      result[tbl] = await query(sql, params);
+      const rows = await query(sql, params);
+      if (tbl === 'patients') {
+        result[tbl] = rows.map(r => {
+          const withJson = parseJsonFields(r, ['allergies', 'chronic_conditions', 'current_medications']);
+          return decryptFields(withJson, ['phone', 'email', 'address', 'dob', 'govt_id_number', 'ec_phone']);
+        });
+      } else {
+        result[tbl] = rows;
+      }
     } catch (err) { 
       console.error(`Error pulling table ${tbl}:`, err.message);
       result[tbl] = []; 
