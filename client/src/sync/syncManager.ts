@@ -65,27 +65,30 @@ async function pushToServer(): Promise<void> {
   const res = await apiClient.post('/sync/push', { records: queue, clientId });
   const { results } = res.data;
 
-  // Clear successfully synced items from queue
-  const successIds = results
-    .filter((r: any) => ['inserted','updated','deleted','already_exists','conflict_skipped'].includes(r.status))
-    .map((_: any, idx: number) => queue[idx]?.id)
-    .filter(Boolean);
+  // Clear processed items from queue and mark them as synced in tables
+  const idsToDelete: number[] = [];
+  const successStatus = ['inserted', 'updated', 'deleted', 'already_exists', 'conflict_skipped'];
 
-  if (successIds.length) {
-    await db.syncQueue.bulkDelete(successIds);
-  }
+  results.forEach((result: any, idx: number) => {
+    const qItem = queue[idx];
+    if (!qItem || qItem.id === undefined) return;
 
-  // Mark synced records in tables
-  for (const result of results) {
+    idsToDelete.push(qItem.id);
+
     if (result.status === 'inserted' || result.status === 'updated') {
-      const qItem = queue.find(q => q.payload.id === result.id);
-      if (qItem) {
-        await markSynced(qItem.table, result.id);
-      }
+      markSynced(qItem.table, result.id).catch(err =>
+        console.error(`Error marking ${qItem.table} ${result.id} as synced:`, err)
+      );
     } else if (result.status === 'conflict_skipped') {
       console.warn(`Sync Conflict: Record ${result.id} was modified by another device.`);
       alert(`Sync Conflict: A record you edited was recently updated by another user. Your changes for this record have been overwritten by the newer version to prevent data corruption.`);
+    } else if (result.status === 'rejected' || result.status === 'error') {
+      console.warn(`Sync rejected for ${qItem.table} ${result.id}: ${result.reason}`);
     }
+  });
+
+  if (idsToDelete.length) {
+    await db.syncQueue.bulkDelete(idsToDelete);
   }
 }
 
