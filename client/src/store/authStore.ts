@@ -33,6 +33,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       const { user } = res.data;
       localStorage.setItem('emr_user', JSON.stringify(user));
       set({ user, token: 'cookie-auth', isLoading: false });
+      
+      // Trigger sync immediately on session restore
+      import('../sync/syncManager').then(m => m.syncNow()).catch(console.error);
     } catch (err) {
       localStorage.removeItem('emr_user');
       set({ user: null, token: null, isLoading: false });
@@ -45,6 +48,10 @@ export const useAuthStore = create<AuthState>((set) => ({
       const { user } = res.data;
       localStorage.setItem('emr_user', JSON.stringify(user));
       set({ user, token: 'cookie-auth' });
+      
+      // Trigger sync immediately on login
+      import('../sync/syncManager').then(m => m.syncNow()).catch(console.error);
+      
       return true;
     } catch (err: any) {
       return false;

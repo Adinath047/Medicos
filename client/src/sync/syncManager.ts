@@ -3,6 +3,7 @@
 
 import { db, getPendingCount, getLastSync, setLastSync } from '../db/localDB';
 import { apiClient } from '../api/client';
+import { useAuthStore } from '../store/authStore';
 
 export type SyncState = 'idle' | 'syncing' | 'error' | 'offline';
 
@@ -33,6 +34,9 @@ window.addEventListener('offline', () => { isOnline = false; emit('offline', pen
 
 // ── Main sync function ────────────────────────────────────────────────
 export async function syncNow(): Promise<void> {
+  const user = useAuthStore.getState().user;
+  if (!user) return; // Do not sync if not logged in
+
   if (!isOnline || currentState === 'syncing') return;
 
   const pending = await getPendingCount();
