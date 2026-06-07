@@ -126,10 +126,12 @@ if (isMonolith || serviceName === 'clinical') {
       const totalDoctorsRow = await queryOne("SELECT COUNT(*) as n FROM users WHERE hospital_id = $1 AND role = 'doctor' AND is_active = 1", [hid]);
       const pendingBillingRow = await queryOne("SELECT COUNT(*) as n FROM billing WHERE hospital_id = $1 AND payment_status = 'Pending'", [hid]);
       
-      const recentPatients = await query(
+      const { decryptFields } = require('./utils/crypto');
+      const recentPatientsRaw = await query(
         "SELECT id, name, uhid, age, sex, blood_group, phone, created_at FROM patients WHERE hospital_id = $1 AND is_active = 1 ORDER BY created_at DESC LIMIT 5",
         [hid]
       );
+      const recentPatients = recentPatientsRaw.map(p => decryptFields(p, ['phone']));
       
       const todayQueue = await query(
         `SELECT a.*, p.name as patient_name, p.uhid, u.name as doctor_name
