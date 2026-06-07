@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: medicos-emr
+    env: docker
+    dockerfilePath: Dockerfile
+    plan: free
+    branch: main
+    numReplicas: 1
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        placeholder: "Enter Supabase PostgreSQL connection string (postgresql://...)"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SUPER_ADMIN_KEY
+        placeholder: "Enter Super Admin Access Key for provisioning"
+      - key: SUPABASE_URL
+        placeholder: "Enter Supabase Project URL"
+      - key: SUPABASE_ANON_KEY
+        placeholder: "Enter Supabase Anon Key"
+      - key: SUPABASE_SERVICE_KEY
+        placeholder: "Enter Supabase Service Role Key"
+      - key: SUPABASE_ENABLED
+        value: "true"
