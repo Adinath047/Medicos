@@ -6,6 +6,11 @@ interface AuthUser {
   id: string; name: string; email: string;
   role: string; hospitalId?: string; photoUrl?: string;
   staff_type?: string;
+  specialization?: string;
+  licenseNumber?: string;
+  consultationFee?: number;
+  followupFee?: number;
+  letterhead?: string;
 }
 
 interface AuthState {
@@ -47,7 +52,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: () => {
-    apiClient.post('/auth/logout').catch(() => { /* ignore */ });
+    const currentUser = useAuthStore.getState().user;
+    if (currentUser) {
+      apiClient.post('/auth/logout').catch(() => { /* ignore */ });
+    }
     localStorage.removeItem('emr_user');
     set({ user: null, token: null });
   },

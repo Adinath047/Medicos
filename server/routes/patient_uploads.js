@@ -51,7 +51,10 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 
   try {
-    const hospitalId = bodyHid || req.user.hospitalId || 'hsp-001';
+    const hospitalId = req.user.hospitalId || 'hsp-001';
+    const patient = await queryOne('SELECT id FROM patients WHERE id = $1 AND hospital_id = $2 AND is_active = 1', [patient_id, hospitalId]);
+    if (!patient) return res.status(404).json({ error: 'Patient not found in this hospital' });
+
     const id = uuid();
 
     await run(
@@ -73,9 +76,9 @@ router.post('/', authMiddleware, async (req, res) => {
 router.delete('/:id', authMiddleware, async (req, res) => {
   const id = req.params.id;
   try {
-    const upload = await queryOne('SELECT * FROM patient_uploads WHERE id = $1', [id]);
+    const upload = await queryOne('SELECT * FROM patient_uploads WHERE id = $1 AND hospital_id = $2', [id, req.user.hospitalId]);
     
-    if (!upload) return res.status(404).json({ error: 'Not found' });
+    if (!upload) return res.status(404).json({ error: 'Upload not found' });
     
     if (req.user.role === 'patient' && req.user.id !== upload.patient_id) {
       return res.status(403).json({ error: 'Forbidden' });

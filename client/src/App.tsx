@@ -18,6 +18,8 @@ import PharmacyBillingPage from './pages/PharmacyBillingPage';
 import SettingsPage from './pages/SettingsPage';
 import FrontDeskDashboard from './pages/FrontDeskDashboard';
 import LoginPage from './pages/LoginPage';
+import BedsPage from './pages/BedsPage';
+import { apiClient } from './api/client';
 
 // ── SVG Icons ─────────────────────────────────────────────────────────
 const Icons: Record<string, JSX.Element> = {
@@ -30,6 +32,8 @@ const Icons: Record<string, JSX.Element> = {
   pharmacy: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></svg>,
   vitals:        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
   dashboard:     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>,
+  beds:          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 4v16M2 8h18a2 2 0 0 1 2 2v10M2 17h20M6 8v9"/></svg>,
+  settings:      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
 };
 
 // NAV is now a function so it can read staff_type for receptionists
@@ -44,30 +48,44 @@ function getNav(user: any) {
     { icon: 'encounters',   label: 'Encounters',     page: 'encounters' },
     { icon: 'vitals',       label: 'Vitals',         page: 'vitals' },
     { icon: 'appointments', label: 'Appointments',   page: 'appointments' },
+    { icon: 'beds',         label: 'Bed Allocation', page: 'beds' },
+    { section: 'System' },
+    { icon: 'settings',     label: 'Settings',       page: 'settings' },
   ];
   if (user?.role === 'pharmacist') return [
     { icon: 'pharmacy',     label: 'Pharmacy',       page: 'pharmacy' },
     { icon: 'prescriptions',label: 'Prescriptions',  page: 'prescriptions' },
     { icon: 'patients',     label: 'Patients',       page: 'patients' },
+    { section: 'System' },
+    { icon: 'settings',     label: 'Settings',       page: 'settings' },
   ];
   if (user?.role === 'lab_technician') return [
     { icon: 'patients',     label: 'Patients',       page: 'patients' },
     { icon: 'vitals',       label: 'Vitals/Labs',    page: 'vitals' },
+    { section: 'System' },
+    { icon: 'settings',     label: 'Settings',       page: 'settings' },
   ];
   if (user?.role === 'billing') return [
     { icon: 'billing',      label: 'Billing',        page: 'billing' },
     { icon: 'patients',     label: 'Patients',       page: 'patients' },
+    { section: 'System' },
+    { icon: 'settings',     label: 'Settings',       page: 'settings' },
   ];
   // Pharmacy staff: only see pharmacy billing
   if (user?.role === 'receptionist' && user?.staff_type === 'pharmacy') return [
     { icon: 'pharmacy',  label: '💊 Pharmacy Billing', page: 'pharmacy' },
+    { section: 'System' },
+    { icon: 'settings',     label: 'Settings',       page: 'settings' },
   ];
   // Front-desk receptionist (default)
   return [
     { icon: 'dashboard',    label: 'Dashboard',      page: 'dashboard' },
     { icon: 'patients',     label: 'Patients',       page: 'patients' },
     { icon: 'appointments', label: 'Appointments',   page: 'appointments' },
+    { icon: 'beds',         label: 'Bed Allocation', page: 'beds' },
     { icon: 'billing',      label: 'Billing',        page: 'billing' },
+    { section: 'System' },
+    { icon: 'settings',     label: 'Settings',       page: 'settings' },
   ];
 }
 
@@ -163,8 +181,9 @@ function SyncBadge() {
 const PAGE_TITLES: Record<string, string> = {
   dashboard: 'Dashboard', patients: 'Patients', prescriptions: 'Prescriptions', encounters: 'Encounters',
   vitals: 'Vitals', appointments: 'Appointments', billing: 'Billing',
-  settings: 'Staff Management', patient_detail: 'Patient Record',
+  settings: 'Settings', patient_detail: 'Patient Record',
   new_encounter: 'New Encounter', new_prescription: 'Write Prescription', new_vitals: 'Record Vitals',
+  beds: 'Bed Allocation',
 };
 
 // ── App ───────────────────────────────────────────────────────────────
@@ -173,6 +192,33 @@ export default function App() {
   const [page, setPage]         = useState('');
   const [pageData, setPageData] = useState<any>(null);
   const [sidebarOpen, setSidebar] = useState(false);
+  const [alerts, setAlerts] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!user || user.role !== 'doctor') return;
+    
+    checkAlerts();
+    const interval = setInterval(checkAlerts, 10000);
+    return () => clearInterval(interval);
+
+    async function checkAlerts() {
+      try {
+        const res = await apiClient.get('/notifications/active');
+        setAlerts(res.data);
+      } catch (err) {
+        console.error('Failed to check alerts:', err);
+      }
+    }
+  }, [user]);
+
+  async function handleDismissAlert(id: string) {
+    try {
+      await apiClient.post(`/notifications/${id}/read`);
+      setAlerts(prev => prev.filter(a => a.id !== id));
+    } catch (err) {
+      console.error('Failed to dismiss alert:', err);
+    }
+  }
 
   // Set default page per role on login
   useEffect(() => {
@@ -220,6 +266,8 @@ export default function App() {
     appointments:     ['doctor', 'receptionist'],
     billing:          ['receptionist', 'billing'],
     pharmacy:         ['receptionist', 'pharmacist'],
+    beds:             ['receptionist', 'doctor', 'nurse'],
+    settings:         ['doctor', 'nurse', 'lab_technician', 'pharmacist', 'billing', 'receptionist'],
   };
 
   function renderPage() {
@@ -247,6 +295,8 @@ export default function App() {
       case 'new_encounter':   return <NewEncounter onNavigate={navigate} data={pageData} />;
       case 'new_prescription':return <PrescriptionPage onNavigate={navigate} data={pageData} />;
       case 'new_vitals':      return <VitalsPage onNavigate={navigate} data={pageData} mode="record" />;
+      case 'beds':            return <BedsPage />;
+      case 'settings':        return <SettingsPage />;
       default:                return <PatientsPage onNavigate={navigate} />;
     }
   }
@@ -267,6 +317,62 @@ export default function App() {
             </div>
           </div>
         </header>
+
+        {/* Emergency alerts section */}
+        {alerts.length > 0 && (
+          <div style={{
+            background: '#fee2e2',
+            border: '2px solid #ef4444',
+            margin: '16px',
+            borderRadius: '12px',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+            animation: 'pulse-border 1.5s infinite',
+          }}>
+            <style>{`
+              @keyframes pulse-border {
+                0% { border-color: #ef4444; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+                50% { border-color: #fca5a5; box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+                100% { border-color: #ef4444; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+              }
+            `}</style>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 24, animation: 'shake 0.5s infinite' }}>🚨</span>
+              <style>{`
+                @keyframes shake {
+                  0% { transform: rotate(0); }
+                  25% { transform: rotate(15deg); }
+                  50% { transform: rotate(0); }
+                  75% { transform: rotate(-15deg); }
+                  100% { transform: rotate(0); }
+                }
+              `}</style>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 800, color: '#991b1b', fontSize: 14 }}>EMERGENCY ALERTS ({alerts.length})</div>
+                <div style={{ color: '#7f1d1d', fontSize: 13, marginTop: 4 }}>
+                  {alerts.map((alert, i) => (
+                    <div key={alert.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: i < alerts.length - 1 ? '1px solid #fca5a5' : 'none' }}>
+                      <div>
+                        <strong>{alert.message}</strong>
+                        {alert.patient_name && <span> (Patient: <strong>{alert.patient_name}</strong> - UHID: {alert.patient_uhid})</span>}
+                      </div>
+                      <button
+                        className="btn btn-danger btn-sm"
+                        style={{ padding: '2px 8px', fontSize: 11, minHeight: 'auto', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                        onClick={() => handleDismissAlert(alert.id)}
+                      >
+                        Acknowledge & Dismiss
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="page-scroll">
           {renderPage()}
         </div>

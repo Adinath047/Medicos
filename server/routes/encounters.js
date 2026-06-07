@@ -47,8 +47,8 @@ router.get('/', authMiddleware, async (req, res) => {
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
     const row = await queryOne(
-      'SELECT e.*, p.name as patient_name, p.uhid, p.blood_group, u.name as doctor_name FROM encounters e JOIN patients p ON e.patient_id=p.id JOIN users u ON e.doctor_id=u.id WHERE e.id=$1',
-      [req.params.id]
+      'SELECT e.*, p.name as patient_name, p.uhid, p.blood_group, u.name as doctor_name FROM encounters e JOIN patients p ON e.patient_id=p.id JOIN users u ON e.doctor_id=u.id WHERE e.id=$1 AND e.hospital_id=$2',
+      [req.params.id, req.user.hospitalId]
     );
     if (!row) return res.status(404).json({ error: 'Encounter not found' });
 
@@ -83,7 +83,7 @@ router.post('/',
 
     try {
       // Verify patient exists
-      const patient = await queryOne('SELECT id FROM patients WHERE id = $1 AND is_active = 1', [patient_id]);
+      const patient = await queryOne('SELECT id FROM patients WHERE id = $1 AND hospital_id = $2 AND is_active = 1', [patient_id, req.user.hospitalId]);
       if (!patient) return res.status(404).json({ error: 'Patient not found' });
 
       // diagnosis must be an array
@@ -146,7 +146,7 @@ router.put('/:id',
     }
 
     try {
-      const existing = await queryOne('SELECT id FROM encounters WHERE id = $1', [req.params.id]);
+      const existing = await queryOne('SELECT id FROM encounters WHERE id = $1 AND hospital_id = $2', [req.params.id, req.user.hospitalId]);
       if (!existing) return res.status(404).json({ error: 'Not found' });
 
       await run(
@@ -174,7 +174,7 @@ router.put('/:id',
 // DELETE /api/encounters/:id
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    const existing = await queryOne('SELECT id FROM encounters WHERE id = $1', [req.params.id]);
+    const existing = await queryOne('SELECT id FROM encounters WHERE id = $1 AND hospital_id = $2', [req.params.id, req.user.hospitalId]);
     if (!existing) return res.status(404).json({ error: 'Encounter not found' });
     await run("UPDATE encounters SET status = 'Cancelled', updated_at = now()::text WHERE id = $1", [req.params.id]);
     auditLog(req.user.id, 'CANCEL_ENCOUNTER', 'encounters', req.params.id, {}, ip(req));

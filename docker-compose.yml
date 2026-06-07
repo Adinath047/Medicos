@@ -1,24 +1,100 @@
 version: '3.8'
 
 services:
-  medicos-emr:
-    build: .
-    container_name: medicos_emr
+  # ── API Gateway & Load Balancer ──
+  gateway:
+    image: nginx:alpine
+    container_name: medicos_gateway
     ports:
       - "3000:3000"
     volumes:
-      # Persist SQLite database and other data
-      - medicos_data:/app/data
-    environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - DB_PATH=/app/data/emr_data.sqlite3
-      # Note: For production, generate a secure random string for JWT_SECRET
-      - JWT_SECRET=change_this_to_a_secure_random_string_in_production
-      # Uncomment and set your Supabase credentials if using cloud sync
-      # - SUPABASE_URL=https://your-project.supabase.co
-      # - SUPABASE_KEY=your_supabase_service_role_key
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - client_assets:/usr/share/nginx/html:ro
+    depends_on:
+      - auth-service
+      - clinical-service-1
+      - clinical-service-2
+      - billing-service
+      - sync-service
+    networks:
+      - medicos_network
     restart: unless-stopped
 
+  # ── Auth Microservice ──
+  auth-service:
+    build: .
+    container_name: medicos_auth
+    env_file:
+      - ./server/.env
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - SERVICE_NAME=auth
+    volumes:
+      - client_assets:/app/client/dist
+    networks:
+      - medicos_network
+    restart: unless-stopped
+
+  # ── Clinical Microservice (Instance 1) ──
+  clinical-service-1:
+    build: .
+    container_name: medicos_clinical_1
+    env_file:
+      - ./server/.env
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - SERVICE_NAME=clinical
+    networks:
+      - medicos_network
+    restart: unless-stopped
+
+  # ── Clinical Microservice (Instance 2) ──
+  clinical-service-2:
+    build: .
+    container_name: medicos_clinical_2
+    env_file:
+      - ./server/.env
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - SERVICE_NAME=clinical
+    networks:
+      - medicos_network
+    restart: unless-stopped
+
+  # ── Billing Microservice ──
+  billing-service:
+    build: .
+    container_name: medicos_billing
+    env_file:
+      - ./server/.env
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - SERVICE_NAME=billing
+    networks:
+      - medicos_network
+    restart: unless-stopped
+
+  # ── Sync Microservice ──
+  sync-service:
+    build: .
+    container_name: medicos_sync
+    env_file:
+      - ./server/.env
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - SERVICE_NAME=sync
+    networks:
+      - medicos_network
+    restart: unless-stopped
+
+networks:
+  medicos_network:
+    driver: bridge
+
 volumes:
-  medicos_data:
+  client_assets:

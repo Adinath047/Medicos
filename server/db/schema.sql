@@ -271,6 +271,21 @@ CREATE TABLE IF NOT EXISTS billing (
   FOREIGN KEY (encounter_id) REFERENCES encounters(id)
 );
 
+-- ── MEDICINES ─────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS medicines (
+  id           TEXT PRIMARY KEY,
+  hospital_id  TEXT NOT NULL,
+  name         TEXT NOT NULL,
+  generics     TEXT DEFAULT '[]', -- JSON array
+  strengths    TEXT DEFAULT '[]', -- JSON array
+  default_dose TEXT,
+  category     TEXT,
+  is_active    INTEGER NOT NULL DEFAULT 1,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+);
+
 -- ── SYNC QUEUE (tracks offline changes that need server sync) ─────────
 CREATE TABLE IF NOT EXISTS sync_queue (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -296,6 +311,59 @@ CREATE TABLE IF NOT EXISTS audit_log (
   ip_address TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ── OPTIMIZATION INDEXES ──────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_patients_updated_at ON patients(updated_at);
+CREATE INDEX IF NOT EXISTS idx_patients_hsp_updated ON patients(hospital_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_encounters_updated_at ON encounters(updated_at);
+CREATE INDEX IF NOT EXISTS idx_encounters_hsp_updated ON encounters(hospital_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_vitals_recorded_at ON vitals(recorded_at);
+CREATE INDEX IF NOT EXISTS idx_vitals_hsp_recorded ON vitals(hospital_id, recorded_at);
+CREATE INDEX IF NOT EXISTS idx_prescriptions_created_at ON prescriptions(created_at);
+CREATE INDEX IF NOT EXISTS idx_prescriptions_hsp_created ON prescriptions(hospital_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_appointments_updated_at ON appointments(updated_at);
+CREATE INDEX IF NOT EXISTS idx_appointments_hsp_updated ON appointments(hospital_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_billing_created_at ON billing(created_at);
+CREATE INDEX IF NOT EXISTS idx_billing_hsp_created ON billing(hospital_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_medicines_updated_at ON medicines(updated_at);
+CREATE INDEX IF NOT EXISTS idx_medicines_hsp_updated ON medicines(hospital_id, updated_at);
+
+-- ── AUTO-UPDATE UPDATED_AT TRIGGERS ──────────────────────────────────
+CREATE TRIGGER IF NOT EXISTS trg_users_updated_at AFTER UPDATE ON users
+FOR EACH ROW WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+  UPDATE users SET updated_at = datetime('now') WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_hospitals_updated_at AFTER UPDATE ON hospitals
+FOR EACH ROW WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+  UPDATE hospitals SET updated_at = datetime('now') WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_patients_updated_at AFTER UPDATE ON patients
+FOR EACH ROW WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+  UPDATE patients SET updated_at = datetime('now') WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_encounters_updated_at AFTER UPDATE ON encounters
+FOR EACH ROW WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+  UPDATE encounters SET updated_at = datetime('now') WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_appointments_updated_at AFTER UPDATE ON appointments
+FOR EACH ROW WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+  UPDATE appointments SET updated_at = datetime('now') WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_medicines_updated_at AFTER UPDATE ON medicines
+FOR EACH ROW WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+  UPDATE medicines SET updated_at = datetime('now') WHERE id = OLD.id;
+END;
 
 -- ── SEED: Default Hospital & Super Admin ─────────────────────────────
 INSERT OR IGNORE INTO hospitals (id, name, type, city, phone) VALUES

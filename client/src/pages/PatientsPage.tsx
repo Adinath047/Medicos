@@ -63,6 +63,7 @@ function AddPatientModal({ onClose, onDone }: { onClose: ()=>void; onDone: (p:an
     };
     try {
       const res = await apiClient.post('/patients', payload);
+      await db.patients.put({ ...res.data, _syncStatus: 'synced' });
       onDone(res.data);
     } catch (err) {
       const msg = extractServerError(err);
@@ -206,6 +207,59 @@ export default function PatientsPage({ onNavigate, autoOpen }: { onNavigate: (p:
   const [loading, setLoading]   = useState(true);
   const [source, setSource]     = useState<'server'|'local'>('server');
 
+  // Check-in state
+  const [checkInPatient, setCheckInPatient] = useState<any>(null);
+  const [checkInDoctors, setCheckInDoctors] = useState<any[]>([]);
+  const [checkInDocId, setCheckInDocId] = useState('');
+  const [checkInReason, setCheckInReason] = useState('Consultation');
+  const [submittingCheckIn, setSubmittingCheckIn] = useState(false);
+
+  useEffect(() => {
+    if (checkInPatient) {
+      setCheckInDocId('');
+      setCheckInReason('Consultation');
+      apiClient.get('/users/doctors')
+        .then(res => setCheckInDoctors(res.data || []))
+        .catch(() => {});
+    }
+  }, [checkInPatient]);
+
+  async function handleCheckInSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!checkInPatient || !checkInDocId) return;
+    setSubmittingCheckIn(true);
+
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+    const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+    try {
+      const res = await apiClient.post('/appointments', {
+        patient_id: checkInPatient.id,
+        doctor_id: checkInDocId,
+        date: dateStr,
+        time: timeStr,
+        reason: checkInReason,
+      });
+      
+      const apptId = res.data.id;
+      
+      const statusRes = await apiClient.put(`/appointments/${apptId}/status`, {
+        status: 'Checked-In',
+      });
+      
+      await db.appointments.put({ ...statusRes.data, _syncStatus: 'synced' });
+      
+      alert(`Successfully checked-in ${checkInPatient.name}.`);
+      setCheckInPatient(null);
+    } catch (err: any) {
+      alert(err?.response?.data?.error || 'Failed to check-in patient.');
+    } finally {
+      setSubmittingCheckIn(false);
+    }
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -226,6 +280,56 @@ export default function PatientsPage({ onNavigate, autoOpen }: { onNavigate: (p:
   return (
     <>
       {showAdd && !isDoctor && <AddPatientModal onClose={()=>setShowAdd(false)} onDone={p=>{ setPatients(x=>[p,...x]); setShowAdd(false); }} />}
+      {checkInPatient && (
+        <div className="modal-overlay" onClick={() => setCheckInPatient(null)}>
+          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">Patient Check-in</div>
+              <button className="modal-close" onClick={() => setCheckInPatient(null)}>✕</button>
+            </div>
+            <form onSubmit={handleCheckInSubmit}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ background: 'var(--surface-alt)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>PATIENT</div>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--primary)' }}>{checkInPatient.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>UHID: {checkInPatient.uhid}</div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Assign Doctor *</label>
+                  <select
+                    className="input"
+                    value={checkInDocId}
+                    onChange={e => setCheckInDocId(e.target.value)}
+                    required
+                  >
+                    <option value="">— Select Doctor —</option>
+                    {checkInDoctors.map(d => (
+                      <option key={d.id} value={d.id}>Dr. {d.name} ({d.specialization || 'General'})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Reason for Visit</label>
+                  <input
+                    className="input"
+                    placeholder="e.g. Fever, Follow-up, Routine checkup"
+                    value={checkInReason}
+                    onChange={e => setCheckInReason(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-ghost" onClick={() => setCheckInPatient(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={submittingCheckIn || !checkInDocId}>
+                  {submittingCheckIn ? 'Checking in...' : 'Perform Check-in'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       <div className="page-header">
         <div>
           <div className="page-title">{isDoctor ? 'Select Patient' : 'Patients'}</div>
@@ -290,7 +394,16 @@ export default function PatientsPage({ onNavigate, autoOpen }: { onNavigate: (p:
                               </button>
                             </div>
                           ) : (
-                            <button className="btn btn-ghost btn-sm" onClick={e=>{e.stopPropagation();onNavigate('patient_detail',{patientId:p.id});}}>View →</button>
+                            <div style={{display:'flex',gap:6}}>
+                              {user?.role === 'receptionist' && (
+                                <button className="btn btn-secondary btn-sm" onClick={e=>{e.stopPropagation();setCheckInPatient(p);}}>
+                                  Check-in
+                                </button>
+                              )}
+                              <button className="btn btn-ghost btn-sm" onClick={e=>{e.stopPropagation();onNavigate('patient_detail',{patientId:p.id});}}>
+                                View
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>

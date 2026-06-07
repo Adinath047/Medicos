@@ -1,0 +1,390 @@
+[
+  {
+    "number": "1.1.1",
+    "name": "Halothane",
+    "generics": [
+      "Halothane"
+    ],
+    "strengths": [
+      "Liquid for inhalation"
+    ],
+    "defaultDose": "Liquid for inhalation",
+    "category": "General"
+  },
+  {
+    "number": "1.1.2",
+    "name": "Isoflurane",
+    "generics": [
+      "Isoflurane"
+    ],
+    "strengths": [
+      "Liquid for inhalation"
+    ],
+    "defaultDose": "Liquid for inhalation",
+    "category": "General"
+  },
+  {
+    "number": "1.1.3",
+    "name": "Ketamine",
+    "generics": [
+      "Ketamine"
+    ],
+    "strengths": [
+      "Injection 10 mg/mL",
+      "Injection 50 mg/mL"
+    ],
+    "defaultDose": "Injection 10 mg/mL",
+    "category": "General"
+  },
+  {
+    "number": "1.1.4",
+    "name": "Nitrous oxide",
+    "generics": [
+      "Nitrous oxide"
+    ],
+    "strengths": [
+      "As licensed for medical purpose"
+    ],
+    "defaultDose": "As licensed for medical purpose",
+    "category": "General"
+  },
+  {
+    "number": "1.1.5",
+    "name": "Oxygen",
+    "generics": [
+      "Oxygen"
+    ],
+    "strengths": [
+      "As licensed for medical purpose"
+    ],
+    "defaultDose": "As licensed for medical purpose",
+    "category": "General"
+  },
+  {
+    "number": "1.1.6",
+    "name": "Propofol",
+    "generics": [
+      "Propofol"
+    ],
+    "strengths": [
+      "Injection 10 mg/mL"
+    ],
+    "defaultDose": "Injection 10 mg/mL",
+    "category": "General"
+  },
+  {
+    "number": "1.1.7",
+    "name": "Sevoflurane",
+    "generics": [
+      "Sevoflurane"
+    ],
+    "strengths": [
+      "Liquid for inhalation"
+    ],
+    "defaultDose": "Liquid for inhalation",
+    "category": "General"
+  },
+  {
+    "number": "1.1.8",
+    "name": "Thiopentone",
+    "generics": [
+      "Thiopentone"
+    ],
+    "strengths": [
+      "Powder for injection"
+    ],
+    "defaultDose": "Powder for injection",
+    "category": "General"
+  },
+  {
+    "number": "1.2.1",
+    "name": "Bupivacaine",
+    "generics": [
+      "Bupivacaine"
+    ],
+    "strengths": [
+      "Injection"
+    ],
+    "defaultDose": "Injection",
+    "category": "General"
+  },
+  {
+    "number": "1.2.2",
+    "name": "Lignocaine",
+    "generics": [
+      "Lignocaine"
+    ],
+    "strengths": [
+      "Topical forms 2-5 %",
+      "Injection 1 %",
+      "Injection 2 %",
+      "Injection 5 % with"
+    ],
+    "defaultDose": "Topical forms 2-5 %",
+    "category": "General"
+  },
+  {
+    "number": "1.2.3",
+    "name": "Lignocaine (A) + Adrenaline (B)",
+    "generics": [
+      "Lignocaine (A) + Adrenaline (B)"
+    ],
+    "strengths": [
+      "Injection 1% (A) + 1:200000  (5 mcg/mL) (B)",
+      "Injection 2% (A) + 1:200000  (5 mcg/mL) (B)"
+    ],
+    "defaultDose": "Injection 1% (A) + 1:200000  (5 mcg/mL) (B)",
+    "category": "General"
+  },
+  {
+    "number": "1.3.1",
+    "name": "Atropine",
+    "generics": [
+      "Atropine"
+    ],
+    "strengths": [
+      "Injection"
+    ],
+    "defaultDose": "Injection",
+    "category": "General"
+  },
+  {
+    "number": "1.3.2",
+    "name": "Glycopyrrolate",
+    "generics": [
+      "Glycopyrrolate"
+    ],
+    "strengths": [
+      "Injection"
+    ],
+    "defaultDose": "Injection",
+    "category": "General"
+  },
+  {
+    "number": "1.3.3",
+    "name": "Midazolam",
+    "generics": [
+      "Midazolam"
+    ],
+    "strengths": [
+      "Tablet"
+    ],
+    "defaultDose": "Tablet",
+    "category": "General"
+  },
+  {
+    "number": "1.3.4",
+    "name": "Morphine",
+    "generics": [
+      "Morphine"
+    ],
+    "strengths": [
+      "Injection 10 mg/mL",
+      "Injection 15 mg/mL Section"
+    ],
+    "defaultDose": "Injection 10 mg/mL",
+    "category": "General"
+  },
+  {
+    "number": "1.4.1",
+    "name": "Atracurium",
+    "generics": [
+      "Atracurium"
+    ],
+    "strengths": [
+      "Injection 10 mg/mL"
+    ],
+    "defaultDose": "Injection 10 mg/mL",
+    "category": "General"
+  },
+  {
+    "number": "1.4.2",
+    "name": "Baclofen",
+    "generics": [
+      "Baclofen"
+    ],
+    "strengths": [
+      "Tablet 5 mg",
+      "Tablet 10 mg",
+      "Tablet 20 mg"
+    ],
+    "defaultDose": "Tablet 5 mg",
+    "category": "General"
+  },
+  {
+    "number": "1.4.3",
+    "name": "Neostigmine",
+    "generics": [
+      "Neostigmine"
+    ],
+    "strengths": [
+      "Tablet 15 mg",
+      "Injection"
+    ],
+    "defaultDose": "Tablet 15 mg",
+    "category": "General"
+  },
+  {
+    "number": "1.4.4",
+    "name": "Succinylcholine",
+    "generics": [
+      "Succinylcholine"
+    ],
+    "strengths": [
+      "Injection 50 mg/mL"
+    ],
+    "defaultDose": "Injection 50 mg/mL",
+    "category": "General"
+  },
+  {
+    "number": "1.4.5",
+    "name": "Vecuronium",
+    "generics": [
+      "Vecuronium"
+    ],
+    "strengths": [
+      "Powder for injection 4 mg",
+      "Powder for injection 10 mg Section 2 Analgesics, Antipyretics, Non-steroidal Anti-inflammatory                                                       Drugs (NSAIDs), Medicines used to treat Gout and Disease Modifying Agents used in Rheumatoid Disorders"
+    ],
+    "defaultDose": "Powder for injection 4 mg",
+    "category": "General"
+  },
+  {
+    "number": "2.1.1",
+    "name": "Acetylsalicylic acid",
+    "generics": [
+      "Acetylsalicylic acid"
+    ],
+    "strengths": [
+      "Tablet 300 mg to 500 mg Effervescent/ Dispersible/",
+      "Enteric coated",
+      "Tablet 300 mg to 500 mg"
+    ],
+    "defaultDose": "Tablet 300 mg to 500 mg Effervescent/ Dispersible/",
+    "category": "General"
+  },
+  {
+    "number": "2.1.2",
+    "name": "Diclofenac",
+    "generics": [
+      "Diclofenac"
+    ],
+    "strengths": [
+      "Tablet 50 mg",
+      "Injection 25 mg/mL"
+    ],
+    "defaultDose": "Tablet 50 mg",
+    "category": "General"
+  },
+  {
+    "number": "2.1.3",
+    "name": "Ibuprofen",
+    "generics": [
+      "Ibuprofen"
+    ],
+    "strengths": [
+      "Tablet 200 mg",
+      "Tablet 400 mg",
+      "Oral liquid 100 mg/5 mL (p)"
+    ],
+    "defaultDose": "Tablet 200 mg",
+    "category": "General"
+  },
+  {
+    "number": "2.1.4",
+    "name": "Mefenamic acid",
+    "generics": [
+      "Mefenamic acid"
+    ],
+    "strengths": [
+      "Tablet 250 mg",
+      "Oral liquid 100 mg/5 mL (p)"
+    ],
+    "defaultDose": "Tablet 250 mg",
+    "category": "General"
+  },
+  {
+    "number": "2.1.5",
+    "name": "Paracetamol",
+    "generics": [
+      "Paracetamol"
+    ],
+    "strengths": [
+      "Tablet 500 mg",
+      "Tablet 650 mg",
+      "Oral liquid 120 mg/5 mL (p)",
+      "Oral Liquid 125 mg/5 mL (p)",
+      "Oral Liquid 250 mg/5 mL (p)",
+      "Injection 150 mg/ mL",
+      "Suppository 80 mg",
+      "Suppository 170 mg"
+    ],
+    "defaultDose": "Tablet 500 mg",
+    "category": "General"
+  },
+  {
+    "number": "2.2.1",
+    "name": "Fentanyl",
+    "generics": [
+      "Fentanyl"
+    ],
+    "strengths": [
+      "Injection 50 mcg/mL"
+    ],
+    "defaultDose": "Injection 50 mcg/mL",
+    "category": "General"
+  },
+  {
+    "number": "2.2.2",
+    "name": "Morphine",
+    "generics": [
+      "Morphine"
+    ],
+    "strengths": [
+      "Tablet 10 mg",
+      "Injection 10 mg/mL",
+      "Injection 15 mg/mL"
+    ],
+    "defaultDose": "Tablet 10 mg",
+    "category": "General"
+  },
+  {
+    "number": "2.2.3",
+    "name": "Tramadol",
+    "generics": [
+      "Tramadol"
+    ],
+    "strengths": [
+      "Capsule 50 mg",
+      "Capsule 100 mg",
+      "Injection 50 mg/mL"
+    ],
+    "defaultDose": "Capsule 50 mg",
+    "category": "General"
+  },
+  {
+    "number": "2.3.1",
+    "name": "Allopurinol",
+    "generics": [
+      "Allopurinol"
+    ],
+    "strengths": [
+      "Tablet 100 mg",
+      "Tablet 300 mg"
+    ],
+    "defaultDose": "Tablet 100 mg",
+    "category": "General"
+  },
+  {
+    "number": "2.3.2",
+    "name": "Colchicine",
+    "generics": [
+      "Colchicine"
+    ],
+    "strengths": [
+      "Tablet"
+    ],
+    "defaultDose": "Tablet",
+    "category": "General"
+  }
+]

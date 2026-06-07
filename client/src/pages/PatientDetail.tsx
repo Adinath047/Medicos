@@ -15,12 +15,17 @@ export default function PatientDetail({ onNavigate, data }: { onNavigate:(p:stri
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState(isDoctor ? 'Prescriptions' : 'Overview');
 
+  const [uploads, setUploads] = useState<any[]>([]);
+  const [loadingUploads, setLoadingUploads] = useState(false);
+  const [uploadsError, setUploadsError] = useState('');
+  const [previewDoc, setPreviewDoc] = useState<any>(null);
+
   // Tabs differ by role
   const TABS = isDoctor
-    ? ['Prescriptions', 'Encounters', 'Vitals', 'Overview']
+    ? ['Prescriptions', 'Encounters', 'Vitals', 'Overview', 'Documents']
     : isReceptionist
-    ? ['Overview', 'Appointments']
-    : ['Overview', 'Encounters', 'Vitals', 'Prescriptions', 'Appointments'];
+    ? ['Overview', 'Appointments', 'Documents']
+    : ['Overview', 'Encounters', 'Vitals', 'Prescriptions', 'Appointments', 'Documents'];
 
   useEffect(() => {
     if (!patientId) return;
@@ -40,6 +45,17 @@ export default function PatientDetail({ onNavigate, data }: { onNavigate:(p:stri
       } finally { setLoading(false); }
     })();
   }, [patientId, openedAt]);
+
+  useEffect(() => {
+    if (tab === 'Documents' && patientId) {
+      setLoadingUploads(true);
+      setUploadsError('');
+      apiClient.get(`/patient-uploads/${patientId}`)
+        .then(res => setUploads(res.data))
+        .catch(err => setUploadsError('Failed to load documents.'))
+        .finally(() => setLoadingUploads(false));
+    }
+  }, [tab, patientId]);
 
   if (!patientId) return <div className="empty-state"><span className="empty-icon">👤</span><h3>No patient selected</h3></div>;
   if (loading)   return <div className="loading-screen" style={{height:'60vh'}}><div className="spinner"/></div>;
@@ -328,6 +344,134 @@ export default function PatientDetail({ onNavigate, data }: { onNavigate:(p:stri
                   : <div style={{color:'var(--text-muted)',fontSize:13}}>No emergency contact recorded</div>
                 }
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Tab: Documents ── */}
+      {tab === 'Documents' && (
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">Patient Documents & History</div>
+          </div>
+          <div className="card-body">
+            {loadingUploads ? (
+              <div style={{ padding: 40, textAlign: 'center' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+            ) : uploadsError ? (
+              <div className="alert alert-danger">{uploadsError}</div>
+            ) : uploads.length === 0 ? (
+              <div className="empty-state">
+                <span className="empty-icon">📁</span>
+                <h3>No documents uploaded</h3>
+                <p>Saved prescriptions and other patient records will appear here.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+                {uploads.map((doc: any) => (
+                  <div
+                    key={doc.id}
+                    className="card"
+                    style={{
+                      margin: 0,
+                      cursor: 'pointer',
+                      border: '1px solid var(--border)',
+                      transition: 'transform 0.2s, box-shadow 0.2s',
+                    }}
+                    onClick={() => setPreviewDoc(doc)}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = 'none';
+                      e.currentTarget.style.boxShadow = 'none';
+                    }}
+                  >
+                    <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 24 }}>
+                          {doc.file_type?.includes('pdf') ? '📄' : '🖼️'}
+                        </span>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                            {doc.title}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                            {new Date(doc.uploaded_at || doc.created_at).toLocaleDateString('en-IN')}
+                          </div>
+                        </div>
+                      </div>
+                      {doc.notes && (
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', textOverflow: 'ellipsis', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', minHeight: 32 }}>
+                          {doc.notes}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Document Preview Modal */}
+      {previewDoc && (
+        <div className="modal-overlay" onClick={() => setPreviewDoc(null)}>
+          <div className="modal" style={{ maxWidth: 800, width: '90%', height: '80vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">{previewDoc.title}</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {previewDoc.file_url.startsWith('data:application/pdf') && (
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      const printWindow = window.open();
+                      if (printWindow) {
+                        printWindow.document.write(`
+                          <html>
+                            <head><title>${previewDoc.title}</title></head>
+                            <body style="margin:0;">
+                              <embed width="100%" height="100%" src="${previewDoc.file_url}" type="application/pdf" />
+                            </body>
+                          </html>
+                        `);
+                        printWindow.document.close();
+                        setTimeout(() => {
+                          printWindow.focus();
+                          printWindow.print();
+                        }, 500);
+                      }
+                    }}
+                  >
+                    🖨 Print
+                  </button>
+                )}
+                <button className="modal-close" onClick={() => setPreviewDoc(null)}>✕</button>
+              </div>
+            </div>
+            <div className="modal-body" style={{ flex: 1, padding: 0, overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f1f5f9' }}>
+              {previewDoc.file_url.startsWith('data:application/pdf') ? (
+                <iframe
+                  title="Document Preview"
+                  src={previewDoc.file_url}
+                  width="100%"
+                  height="100%"
+                  style={{ border: 'none' }}
+                />
+              ) : previewDoc.file_url.startsWith('data:image') ? (
+                <img
+                  src={previewDoc.file_url}
+                  alt={previewDoc.title}
+                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                />
+              ) : (
+                <div style={{ padding: 20, textAlign: 'center' }}>
+                  <p>Preview not supported for this file type.</p>
+                  <a href={previewDoc.file_url} download={previewDoc.title} className="btn btn-primary">Download File</a>
+                </div>
+              )}
             </div>
           </div>
         </div>

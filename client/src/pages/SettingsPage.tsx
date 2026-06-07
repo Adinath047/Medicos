@@ -1,7 +1,7 @@
 // client/src/pages/SettingsPage.tsx
 import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { db } from '../db/localDB';
+import { db, markPending } from '../db/localDB';
 import { syncNow } from '../sync/syncManager';
 import { useSync } from '../sync/useSync';
 import { apiClient } from '../api/client';
@@ -227,11 +227,289 @@ function EditUserModal({ user, onClose, onDone }: { user:any; onClose:()=>void; 
   );
 }
 
+// ── Add Medicine Modal ────────────────────────────────────────────────
+function AddMedicineModal({ onClose, onDone }: { onClose:()=>void; onDone:(m:any)=>void }) {
+  const [form, setForm] = useState({
+    name: '', generics: '', strengths: '', defaultDose: '', category: 'General'
+  });
+  const [error, setError] = useState('');
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.name.trim()) { setError('Medicine name is required'); return; }
+    onDone({
+      name: form.name.trim(),
+      generics: form.generics.split(',').map(x => x.trim()).filter(Boolean),
+      strengths: form.strengths.split('\n').map(x => x.trim()).filter(Boolean),
+      defaultDose: form.defaultDose.trim(),
+      category: form.category.trim()
+    });
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{maxWidth:500}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="modal-title">Add New Medicine</div>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="modal-body" style={{display:'flex', flexDirection:'column', gap:12}}>
+            {error && <div className="alert alert-danger">{error}</div>}
+            <div className="form-group">
+              <label className="form-label">Medicine Name *</label>
+              <input className="input" placeholder="e.g. Paracetamol 500mg" value={form.name} onChange={e=>setForm(f=>({...f, name:e.target.value}))} required />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Generic Names (comma separated)</label>
+              <input className="input" placeholder="e.g. Acetaminophen" value={form.generics} onChange={e=>setForm(f=>({...f, generics:e.target.value}))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Available Strengths (one per line)</label>
+              <textarea className="input" style={{minHeight:60}} placeholder="e.g.&#10;500 mg&#10;650 mg" value={form.strengths} onChange={e=>setForm(f=>({...f, strengths:e.target.value}))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Default Dose Strength</label>
+              <input className="input" placeholder="e.g. 500 mg" value={form.defaultDose} onChange={e=>setForm(f=>({...f, defaultDose:e.target.value}))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Category</label>
+              <input className="input" placeholder="e.g. Analgesics" value={form.category} onChange={e=>setForm(f=>({...f, category:e.target.value}))} />
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary">Add Medicine</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Edit Medicine Modal ───────────────────────────────────────────────
+function EditMedicineModal({ medicine, onClose, onDone, onDelete }: { medicine:any; onClose:()=>void; onDone:(id:string, m:any)=>void; onDelete:(id:string)=>void }) {
+  const [form, setForm] = useState({
+    name: medicine.name,
+    generics: Array.isArray(medicine.generics) ? medicine.generics.join(', ') : '',
+    strengths: Array.isArray(medicine.strengths) ? medicine.strengths.join('\n') : '',
+    defaultDose: medicine.default_dose || '',
+    category: medicine.category || '',
+    is_active: medicine.is_active ?? 1
+  });
+  const [error, setError] = useState('');
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.name.trim()) { setError('Medicine name is required'); return; }
+    onDone(medicine.id, {
+      name: form.name.trim(),
+      generics: form.generics.split(',').map((x: string) => x.trim()).filter(Boolean),
+      strengths: form.strengths.split('\n').map((x: string) => x.trim()).filter(Boolean),
+      defaultDose: form.defaultDose.trim(),
+      category: form.category.trim(),
+      is_active: Number(form.is_active)
+    });
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{maxWidth:500}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="modal-title">Edit Medicine</div>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="modal-body" style={{display:'flex', flexDirection:'column', gap:12}}>
+            {error && <div className="alert alert-danger">{error}</div>}
+            <div className="form-group">
+              <label className="form-label">Medicine Name *</label>
+              <input className="input" value={form.name} onChange={e=>setForm(f=>({...f, name:e.target.value}))} required />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Generic Names (comma separated)</label>
+              <input className="input" value={form.generics} onChange={e=>setForm(f=>({...f, generics:e.target.value}))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Available Strengths (one per line)</label>
+              <textarea className="input" style={{minHeight:60}} value={form.strengths} onChange={e=>setForm(f=>({...f, strengths:e.target.value}))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Default Dose Strength</label>
+              <input className="input" value={form.defaultDose} onChange={e=>setForm(f=>({...f, defaultDose:e.target.value}))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Category</label>
+              <input className="input" value={form.category} onChange={e=>setForm(f=>({...f, category:e.target.value}))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Status</label>
+              <select className="input" value={form.is_active} onChange={e=>setForm(f=>({...f, is_active:Number(e.target.value)}))}>
+                <option value={1}>Active</option>
+                <option value={0}>Inactive</option>
+              </select>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <div style={{ marginRight:'auto' }}>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ color:'var(--danger)' }} onClick={() => { if(confirm('Delete this medicine?')) onDelete(medicine.id); }}>
+                🗑 Delete
+              </button>
+            </div>
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Settings Page ────────────────────────────────────────────────
 export default function SettingsPage() {
   const { user } = useAuthStore();
   const { syncState, pendingCount } = useSync();
   const isAdmin = user?.role === 'admin';
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'users'|'system'|'medicines'>(isAdmin ? 'users' : 'system');
+
+  // Medicines manager state
+  const [meds, setMeds] = useState<any[]>([]);
+  const [medSearch, setMedSearch] = useState('');
+  const [medPage, setMedPage] = useState(0);
+  const [showAddMed, setShowAddMed] = useState(false);
+  const [editMed, setEditMed] = useState<any>(null);
+  const medsPerPage = 12;
+
+  // Load medicines from IndexedDB
+  useEffect(() => {
+    if (activeTab === 'medicines') {
+      loadMedicines();
+    }
+  }, [activeTab]);
+
+  async function loadMedicines() {
+    const all = await db.medicines.toArray();
+    all.sort((a, b) => a.name.localeCompare(b.name));
+    setMeds(all);
+  }
+
+  async function handleAddMedicine(medData: any) {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const payload = {
+      id,
+      hospital_id: user?.hospitalId || 'hsp-001',
+      name: medData.name,
+      generics: medData.generics,
+      strengths: medData.strengths,
+      default_dose: medData.defaultDose || null,
+      category: medData.category || null,
+      is_active: 1,
+      created_at: now,
+      updated_at: now
+    };
+    await markPending(db.medicines, payload, 'create');
+    await db.medicines.put(payload);
+    await loadMedicines();
+    setShowAddMed(false);
+  }
+
+  async function handleUpdateMedicine(id: string, medData: any) {
+    const existing = meds.find(m => m.id === id);
+    if (!existing) return;
+    const now = new Date().toISOString();
+    const payload = {
+      ...existing,
+      name: medData.name,
+      generics: medData.generics,
+      strengths: medData.strengths,
+      default_dose: medData.defaultDose || null,
+      category: medData.category || null,
+      is_active: medData.is_active,
+      updated_at: now
+    };
+    await markPending(db.medicines, payload, 'update');
+    await db.medicines.put(payload);
+    await loadMedicines();
+    setEditMed(null);
+  }
+
+  async function handleDeleteMedicine(id: string) {
+    const existing = meds.find(m => m.id === id);
+    if (!existing) return;
+    await markPending(db.medicines, existing, 'delete');
+    await db.medicines.delete(id);
+    await loadMedicines();
+    setEditMed(null);
+  }
+
+  const filteredMeds = meds.filter(m => {
+    if (!medSearch) return true;
+    const q = medSearch.toLowerCase();
+    return (
+      m.name?.toLowerCase().includes(q) ||
+      (Array.isArray(m.generics) && m.generics.some((g: string) => g.toLowerCase().includes(q))) ||
+      m.category?.toLowerCase().includes(q)
+    );
+  });
+  const totalPages = Math.ceil(filteredMeds.length / medsPerPage);
+  const paginatedMeds = filteredMeds.slice(medPage * medsPerPage, (medPage + 1) * medsPerPage);
+
+  // Practitioner profile state
+  const [profileForm, setProfileForm] = useState({
+    name: user?.name || '',
+    phone: (user as any)?.phone || '',
+    specialization: user?.specialization || '',
+    licenseNumber: user?.licenseNumber || '',
+    consultationFee: user?.consultationFee || 0,
+    followupFee: user?.followupFee || 0,
+    letterhead: user?.letterhead || '',
+  });
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileSuccess, setProfileSuccess] = useState('');
+  const [profileError, setProfileError] = useState('');
+
+  // Sync profileForm state if user loads/updates
+  useEffect(() => {
+    if (user) {
+      setProfileForm({
+        name: user.name || '',
+        phone: (user as any).phone || '',
+        specialization: user.specialization || '',
+        licenseNumber: user.licenseNumber || '',
+        consultationFee: user.consultationFee || 0,
+        followupFee: user.followupFee || 0,
+        letterhead: user.letterhead || '',
+      });
+    }
+  }, [user]);
+
+  async function handleSaveProfile(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingProfile(true);
+    setProfileSuccess('');
+    setProfileError('');
+    try {
+      await apiClient.patch('/users/me/profile', {
+        name: profileForm.name,
+        phone: profileForm.phone,
+        specialization: profileForm.specialization,
+        license_number: profileForm.licenseNumber,
+        consultation_fee: parseFloat(profileForm.consultationFee as any) || 0,
+        followup_fee: parseFloat(profileForm.followupFee as any) || 0,
+        letterhead: profileForm.letterhead,
+      });
+      setProfileSuccess('Practitioner profile updated successfully.');
+      // Refresh the session to update user in authStore
+      await useAuthStore.getState().restoreSession();
+    } catch (err: any) {
+      setProfileError(err?.response?.data?.error || 'Failed to update practitioner profile.');
+    } finally {
+      setSavingProfile(false);
+    }
+  }
 
   // User management state
   const [staff, setStaff]       = useState<any[]>([]);
@@ -245,7 +523,6 @@ export default function SettingsPage() {
   const [cleared, setCleared]   = useState(false);
   const [syncing, setSyncing]   = useState(false);
   const [dbStats, setDbStats]   = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'users'|'system'>(isAdmin ? 'users' : 'system');
 
   useEffect(() => {
     if (isAdmin) loadStaff();
@@ -271,18 +548,18 @@ export default function SettingsPage() {
     await Promise.all([
       db.patients.clear(), db.encounters.clear(), db.vitals.clear(),
       db.prescriptions.clear(), db.appointments.clear(), db.billing.clear(),
-      db.syncQueue.clear(), db.meta.clear(),
+      db.medicines.clear(), db.syncQueue.clear(), db.meta.clear(),
     ]);
     setCleared(true);
   }
 
   async function loadStats() {
-    const [p,e,v,rx,a,b,q] = await Promise.all([
+    const [p,e,v,rx,a,b,q,m] = await Promise.all([
       db.patients.count(), db.encounters.count(), db.vitals.count(),
       db.prescriptions.count(), db.appointments.count(), db.billing.count(),
-      db.syncQueue.count(),
+      db.syncQueue.count(), db.medicines.count(),
     ]);
-    setDbStats({ patients:p, encounters:e, vitals:v, prescriptions:rx, appointments:a, billing:b, syncPending:q });
+    setDbStats({ patients:p, encounters:e, vitals:v, prescriptions:rx, appointments:a, billing:b, medicines:m, syncPending:q });
   }
 
   const filteredStaff = roleFilter === 'all' ? staff : staff.filter(s => s.role === roleFilter);
@@ -309,6 +586,11 @@ export default function SettingsPage() {
         {isAdmin && (
           <button className={`tab${activeTab==='users'?' active':''}`} onClick={()=>setActiveTab('users')}>
             Staff Management
+          </button>
+        )}
+        {(isAdmin || user?.role === 'doctor') && (
+          <button className={`tab${activeTab==='medicines'?' active':''}`} onClick={()=>setActiveTab('medicines')}>
+            Medicines Directory
           </button>
         )}
         <button className={`tab${activeTab==='system'?' active':''}`} onClick={()=>setActiveTab('system')}>
@@ -434,6 +716,140 @@ export default function SettingsPage() {
             </div>
           </div>
 
+          {user?.role === 'doctor' && (
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title">Practitioner Settings</div>
+              </div>
+              <form onSubmit={handleSaveProfile} className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {profileSuccess && <div className="alert alert-success">{profileSuccess}</div>}
+                {profileError && <div className="alert alert-danger">{profileError}</div>}
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-group">
+                    <label className="form-label">Full Name *</label>
+                    <input
+                      className="input"
+                      value={profileForm.name}
+                      onChange={e => setProfileForm(f => ({ ...f, name: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Phone</label>
+                    <input
+                      className="input"
+                      type="tel"
+                      value={profileForm.phone}
+                      onChange={e => setProfileForm(f => ({ ...f, phone: e.target.value }))}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Specialization</label>
+                    <select
+                      className="input"
+                      value={profileForm.specialization}
+                      onChange={e => setProfileForm(f => ({ ...f, specialization: e.target.value }))}
+                    >
+                      <option value="">— Select specialization —</option>
+                      {SPECIALIZATIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Medical Council License No.</label>
+                    <input
+                      className="input"
+                      placeholder="e.g. MH-12345"
+                      value={profileForm.licenseNumber}
+                      onChange={e => setProfileForm(f => ({ ...f, licenseNumber: e.target.value }))}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Consultation Fee (₹) *</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="0"
+                      value={profileForm.consultationFee}
+                      onChange={e => setProfileForm(f => ({ ...f, consultationFee: parseFloat(e.target.value) || 0 }))}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Follow-up Fee (₹) *</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="0"
+                      value={profileForm.followupFee}
+                      onChange={e => setProfileForm(f => ({ ...f, followupFee: parseFloat(e.target.value) || 0 }))}
+                      required
+                    />
+                  </div>
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label className="form-label">Custom Letterhead</label>
+                    
+                    {profileForm.letterhead && profileForm.letterhead.startsWith('data:image/') ? (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Current Letterhead Banner Image:</div>
+                        <div style={{ position: 'relative', display: 'inline-block', border: '1px solid var(--border)', borderRadius: 8, padding: 8, background: '#f8fafc' }}>
+                          <img src={profileForm.letterhead} style={{ maxHeight: 80, maxWidth: '100%', objectFit: 'contain' }} alt="Letterhead Preview" />
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(255,255,255,0.9)', color: 'var(--danger)', padding: '2px 6px', minHeight: 'auto', border: '1px solid #fee2e2' }}
+                            onClick={() => setProfileForm(f => ({ ...f, letterhead: '' }))}
+                          >
+                            ✕ Remove
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+                        <div className="form-group">
+                          <label className="form-label" style={{ fontSize: 12 }}>Custom Header Text (Optional)</label>
+                          <textarea
+                            className="input"
+                            style={{ fontFamily: 'monospace', minHeight: 80 }}
+                            placeholder="e.g.&#10;DR. PRIYA SHARMA, MD&#10;Cardiologist&#10;Reg No: MH-12345 · Phone: +91 98765 43210"
+                            value={profileForm.letterhead}
+                            onChange={e => setProfileForm(f => ({ ...f, letterhead: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 12, background: 'var(--surface-alt)' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>Or Upload Letterhead Image banner (replaces text)</div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              const base64 = event.target?.result as string;
+                              setProfileForm(f => ({ ...f, letterhead: base64 }));
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                      <small style={{ color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                        Recommended size: 800x120px (under 1MB). This banner image or custom text will override the default hospital branding header on printed prescriptions.
+                      </small>
+                    </div>
+                  </div>
+                </div>
+
+                <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start' }} disabled={savingProfile}>
+                  {savingProfile ? <><div className="spinner spinner-sm" />Saving Profile…</> : 'Save Profile'}
+                </button>
+              </form>
+            </div>
+          )}
+
           {/* Sync */}
           <div className="card">
             <div className="card-header"><div className="card-title">Sync Status</div></div>
@@ -494,6 +910,94 @@ export default function SettingsPage() {
                   </>
               }
             </div>
+          </div>
+        </>
+      )}
+      {/* ── Medicines Directory tab ── */}
+      {activeTab === 'medicines' && (isAdmin || user?.role === 'doctor') && (
+        <>
+          {showAddMed && <AddMedicineModal onClose={()=>setShowAddMed(false)} onDone={handleAddMedicine} />}
+          {editMed && <EditMedicineModal medicine={editMed} onClose={()=>setEditMed(null)} onDone={handleUpdateMedicine} onDelete={handleDeleteMedicine} />}
+
+          <div className="card">
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+              <div className="card-title">
+                Medicines Master Directory
+                <span style={{marginLeft:8,fontSize:11,color:'var(--text-muted)',fontWeight:400}}>({filteredMeds.length} items)</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  className="input"
+                  style={{ width: 220, height: 36, padding: '0 12px' }}
+                  placeholder="Search medicines..."
+                  value={medSearch}
+                  onChange={e => { setMedSearch(e.target.value); setMedPage(0); }}
+                />
+                <button className="btn btn-primary btn-sm" onClick={()=>setShowAddMed(true)}>+ Add Medicine</button>
+              </div>
+            </div>
+
+            {paginatedMeds.length === 0
+              ? <div className="empty-state"><span className="empty-icon">💊</span><h3>No medicines found</h3><p>Try searching for a different keyword or add a new medicine.</p></div>
+              : <>
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Medicine Name</th>
+                          <th>Generics</th>
+                          <th>Category</th>
+                          <th>Strengths</th>
+                          <th>Status</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginatedMeds.map(m => (
+                          <tr key={m.id}>
+                            <td>
+                              <div>
+                                <div style={{fontWeight:600,fontSize:13}}>{m.name}</div>
+                                {m.default_dose && <small style={{color:'var(--text-muted)'}}>Default Dose: {m.default_dose}</small>}
+                              </div>
+                            </td>
+                            <td style={{fontSize:12,color:'var(--text-muted)'}}>
+                              {Array.isArray(m.generics) && m.generics.length > 0 ? m.generics.join(', ') : '—'}
+                            </td>
+                            <td style={{fontSize:12,color:'var(--text-muted)'}}>{m.category || '—'}</td>
+                            <td style={{fontSize:12,color:'var(--text-muted)'}}>
+                              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                {Array.isArray(m.strengths) && m.strengths.map((s: string) => (
+                                  <span key={s} className="badge badge-neutral" style={{ fontSize: 10 }}>{s}</span>
+                                ))}
+                              </div>
+                            </td>
+                            <td>
+                              <span className={`badge ${m.is_active !== 0 ? 'badge-success' : 'badge-neutral'}`}>
+                                {m.is_active !== 0 ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                            <td>
+                              <button className="btn btn-ghost btn-sm" onClick={()=>setEditMed(m)}>Edit</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {totalPages > 1 && (
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, padding: '16px 0', borderTop: '1px solid var(--border)' }}>
+                      <button className="btn btn-secondary btn-sm" disabled={medPage === 0} onClick={() => setMedPage(p => Math.max(0, p - 1))}>
+                        Previous
+                      </button>
+                      <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Page {medPage + 1} of {totalPages}</span>
+                      <button className="btn btn-secondary btn-sm" disabled={medPage >= totalPages - 1} onClick={() => setMedPage(p => Math.min(totalPages - 1, p + 1))}>
+                        Next
+                      </button>
+                    </div>
+                  )}
+                </>
+            }
           </div>
         </>
       )}

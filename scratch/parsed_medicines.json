@@ -1,0 +1,62 @@
+[
+  {
+    "number": "6.9.2",
+    "name": "- Antileishmaniasis Medicines  Medicine Level of Healthcare Dosage form(s) and strength(s) 6.9.2.1 Amphotericin B",
+    "generics": [
+      "- Antileishmaniasis Medicines  Medicine Level of Healthcare Dosage form(s) and strength(s) 6.9.2.1 Amphotericin B"
+    ],
+    "strengths": [
+      "Injection 50 mg",
+      "Injection 50 mg",
+      "Injection 50 mg 6.9.2.2 Miltefosine P,S,T",
+      "Capsule 50 mg   6.9.2.3 Paromomycin P,S,T",
+      "Injection 375 mg/mL 6.9.3 - Antipneumocystosis and Antitoxoplasmosis Medicines  Medicine Level of Healthcare Dosage form(",
+      "Capsule 150 mg",
+      "Capsule 300 mg"
+    ],
+    "defaultDose": "Injection 50 mg",
+    "category": "Antiviral Medicines 6.6.1 - Antiherpes Medicines   Medicine Level of Healthcare Dosage form(s) and strength(s) 6.6.1.1 Acyclovir* P,S,T  Tablet 200 mg Tablet 400 mg Tablet 800 mg Powder for Injection 250 mg  Powder for Injection 500 mg  Oral liquid 400 mg/5 mL (p)  6.6.2 - Anti-cytomegalovirus (CMV) medicines   Medicine Level of Healthcare Dosage form(s) and strength(s) 6.6.2.1 Valganciclovir** S, T Tablet 450 mg Powder for oral solution 50 mg/mL 6.7- Medicines used in the Management of HIV 6.7.1 Nucleoside Reverse Transcriptase Inhibitors   Medicine Level of Healthcare Dosage form(s) and strength(s) 6.7.1.1 Abacavir S,T Tablet 60 mg (p) Tablet 300 mg *Acyclovir formulations are also listed in -  A. Section 6.7.5.1 - Anti-infective Medicines -Medicines used in the management of HIV - Medicines for treating Opportunistic Infections in People living with HIV  B. Section 21.1.1 - Ophthalmological Medicines-  Anti-infective medicine  **Valganciclovir formulations are also listed in Section 6.7.5.5 - Anti-infective Medicines-Antiviral medicines -Medicines for treating Opportunistic Infections in People living with HIV"
+  },
+  {
+    "number": "10.5.2",
+    "name": "Clopidogrel",
+    "generics": [
+      "Clopidogrel"
+    ],
+    "strengths": [
+      "Tablet 75 mg",
+      "Tablet 150 mg  10.5.3  Dabigatran S, T",
+      "Tablet 110 mg",
+      "Tablet 150 mg 10.5.4 Enoxaparin",
+      "Injection 40 mg/ 0.4 mL",
+      "Injection 60 mg/ 0.6 mL 10.5.5 Heparin",
+      "Injection 1000 IU/mL",
+      "Injection 5000 IU/mL 10.5.6 Streptokinase S,T",
+      "Injection 750,000 IU",
+      "Injection 15,00,000 IU 10.5.7 Tenecteplase S,T",
+      "Injection 30 mg/vial",
+      "Injection 40 mg/vial 10.6 - Hypolipidemic Medicines  Medicine Level of Healthcare Dosage form(",
+      "Tablet 10 mg",
+      "Tablet 20 mg",
+      "Tablet 40 mg",
+      "Tablet 80 mg"
+    ],
+    "defaultDose": "Tablet 75 mg",
+    "category": "Antiarrhythmic medicines  Medicine Level of Healthcare Dosage form(s) and strength(s) 10.2.1 Adenosine S,T Injection 3 mg/mL 10.2.2 Amiodarone S,T Tablet 100 mg Tablet 200 mg Injection 50 mg/mL 10.2.3 Digoxin* S,T Tablet 0.25 mg Oral liquid 0.05 mg/mL Injection 0.25 mg/mL 10.2.4 Esmolol S,T Injection 10 mg/mL 10.2.5 Lignocaine** S,T Injection 2% 10.2.6 Verapamil S,T Tablet 40 mg Tablet 80 mg  Injection 2.5 mg/ mL 10.3 - Antihypertensive Medicines  Medicine Level of Healthcare Dosage form(s) and strength(s) 10.3.1 Amlodipine P,S,T Tablet 2.5 mg Tablet 5 mg Tablet 10 mg *Digoxin formulations are also listed in Section 10.4.1 -  Cardiovascular Medicines - Medicines used in Shock and Heart Failure **Lignocaine formulations are also listed in Section 1.2.2 - Medicines used in Anaesthesia - Local Anaesthetics"
+  },
+  {
+    "number": "18.2.2",
+    "name": "- Intrauterine Devices  Medicine Level of Healthcare Dosage form(s) and strength(s) 18.2.2.1 Hormone releasing IUD",
+    "generics": [
+      "- Intrauterine Devices  Medicine Level of Healthcare Dosage form(s) and strength(s) 18.2.2.1 Hormone releasing IUD"
+    ],
+    "strengths": [
+      "Tablet 1 mg",
+      "Tablet 2 mg 18.3.1.2 Insulin (Solubl",
+      "Injection 40 IU/mL 18.3.1.3 Insulin Intermediate Acting (NPH)  P,S,T",
+      "Injection 40 IU/mL"
+    ],
+    "defaultDose": "Tablet 1 mg",
+    "category": "Antiarrhythmic medicines  Medicine Level of Healthcare Dosage form(s) and strength(s) 10.2.1 Adenosine S,T Injection 3 mg/mL 10.2.2 Amiodarone S,T Tablet 100 mg Tablet 200 mg Injection 50 mg/mL 10.2.3 Digoxin* S,T Tablet 0.25 mg Oral liquid 0.05 mg/mL Injection 0.25 mg/mL 10.2.4 Esmolol S,T Injection 10 mg/mL 10.2.5 Lignocaine** S,T Injection 2% 10.2.6 Verapamil S,T Tablet 40 mg Tablet 80 mg  Injection 2.5 mg/ mL 10.3 - Antihypertensive Medicines  Medicine Level of Healthcare Dosage form(s) and strength(s) 10.3.1 Amlodipine P,S,T Tablet 2.5 mg Tablet 5 mg Tablet 10 mg *Digoxin formulations are also listed in Section 10.4.1 -  Cardiovascular Medicines - Medicines used in Shock and Heart Failure **Lignocaine formulations are also listed in Section 1.2.2 - Medicines used in Anaesthesia - Local Anaesthetics"
+  }
+]

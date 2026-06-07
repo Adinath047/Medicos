@@ -6,6 +6,7 @@ import { useAuthStore } from '../store/authStore';
 import { v4 as uuid } from 'uuid';
 import { printPrescriptionSlip } from '../utils/printTemplates';
 import { searchMedicines, findMedicineByName, MEDICINES, type Medicine } from '../utils/medicines';
+import { jsPDF } from 'jspdf';
 
 // ── Allergy cross-check ───────────────────────────────────────────────
 /**
@@ -14,11 +15,11 @@ import { searchMedicines, findMedicineByName, MEDICINES, type Medicine } from '.
  * Matching is case-insensitive and uses substring detection so
  * "Penicillin" allergy catches "Amoxicillin" (a penicillin antibiotic).
  */
-function checkAllergyConflict(medName: string, allergies: string[]): string | null {
+function checkAllergyConflict(medName: string, allergies: string[], medicinesList: Medicine[]): string | null {
   if (!medName.trim() || allergies.length === 0) return null;
 
   // Gather all search terms: the drug name itself + all its brand/generic names
-  const drug = MEDICINES.find(m =>
+  const drug = medicinesList.find(m =>
     m.name.toLowerCase() === medName.toLowerCase() ||
     m.generics.some(g => g.toLowerCase() === medName.toLowerCase())
   );
@@ -72,6 +73,32 @@ function durationDays(dur: string): number | null {
   return null;
 }
 
+/** Parse default dose from drug type to prevent 3500 quantity calculation bug */
+function cleanDefaultDose(dose: string): string {
+  if (!dose) return '1 tablet';
+  const d = dose.trim().toLowerCase();
+  
+  // If it already starts with a digit or fraction (like "1", "1/2", "0.5", "1½", "½"), keep it
+  if (/^[0-9½¼¾.]/.test(d)) {
+    return dose;
+  }
+  
+  // Special non-numeric defaults
+  if (d === 'as directed' || d === 'as licensed') {
+    return dose;
+  }
+  
+  if (d.includes('tablet')) return '1 tablet';
+  if (d.includes('capsule')) return '1 capsule';
+  if (d.includes('injection') || d.includes('vial') || d.includes('ampoule') || d.includes('powder for')) return '1 injection';
+  if (d.includes('drop')) return '2 drops';
+  if (d.includes('syrup') || d.includes('suspension') || d.includes('liquid') || d.includes('ml')) return '5 ml';
+  if (d.includes('cream') || d.includes('ointment') || d.includes('gel') || d.includes('topical')) return '1 application';
+  if (d.includes('inhalation') || d.includes('spray') || d.includes('pessary') || d.includes('sachet')) return '1 unit';
+  
+  return '1 tablet'; // fallback
+}
+
 /** How many units per dose (e.g. "1 tablet" → 1, "1½" → 1.5, "2 tablets" → 2) */
 function doseUnits(dose: string): number | null {
   const d = dose.toLowerCase();
@@ -115,10 +142,11 @@ function Highlight({ text, query }: { text: string; query: string }) {
 }
 
 // ── Drug search autocomplete ──────────────────────────────────────────
-function MedAutocomplete({ value, onChange, onSelect }: {
+function MedAutocomplete({ value, onChange, onSelect, medicinesList }: {
   value: string;
   onChange: (v: string) => void;
   onSelect: (m: Medicine) => void;
+  medicinesList: Medicine[];
 }) {
   const [results, setResults]   = useState<Medicine[]>([]);
   const [popular, setPopular]   = useState<Medicine[]>([]);
@@ -130,19 +158,31 @@ function MedAutocomplete({ value, onChange, onSelect }: {
 
   // Load popular drugs once
   useEffect(() => {
-    const p = POPULAR.map(n => searchMedicines(n)[0]).filter(Boolean) as Medicine[];
+    const p = POPULAR.map(n => {
+      const q = n.toLowerCase();
+      return medicinesList.find(m =>
+        m.name.toLowerCase() === q ||
+        m.generics.some(g => g.toLowerCase() === q)
+      );
+    }).filter(Boolean) as Medicine[];
     setPopular(p);
-  }, []);
+  }, [medicinesList]);
 
   // Update search results whenever value changes
   useEffect(() => {
     if (value.trim().length === 0) {
       setResults([]);
     } else {
-      setResults(searchMedicines(value));
+      const q = value.toLowerCase();
+      const filtered = medicinesList.filter(m =>
+        m.name.toLowerCase().includes(q) ||
+        m.generics.some(g => g.toLowerCase().includes(q)) ||
+        m.category.toLowerCase().includes(q)
+      ).slice(0, 12);
+      setResults(filtered);
     }
     setFocused(0);
-  }, [value]);
+  }, [value, medicinesList]);
 
   // Close on outside click
   useEffect(() => {
@@ -261,14 +301,18 @@ function MedAutocomplete({ value, onChange, onSelect }: {
 
 
 // ── Medicine row ──────────────────────────────────────────────────────
-function MedRow({ med, index, onUpdate, onDelete, canDelete, patientAllergies }: {
+function MedRow({ med, index, onUpdate, onDelete, canDelete, patientAllergies, medicinesList }: {
   med: typeof EMPTY_MED; index: number;
   onUpdate: (k: string, v: string) => void;
   onDelete: () => void; canDelete: boolean;
   patientAllergies: string[];
+  medicinesList: Medicine[];
 }) {
-  const drugInfo = findMedicineByName(med.name);
-  const allergyMatch = checkAllergyConflict(med.name, patientAllergies);
+  const drugInfo = medicinesList.find(m =>
+    m.name.toLowerCase() === med.name.toLowerCase() ||
+    m.generics.some(g => g.toLowerCase() === med.name.toLowerCase())
+  );
+  const allergyMatch = checkAllergyConflict(med.name, patientAllergies, medicinesList);
 
   function handleSelect(m: Medicine) {
     onUpdate('name', m.name);
@@ -305,6 +349,7 @@ function MedRow({ med, index, onUpdate, onDelete, canDelete, patientAllergies }:
             value={med.name}
             onChange={v => onUpdate('name', v)}
             onSelect={handleSelect}
+            medicinesList={medicinesList}
           />
           {allergyMatch && (
             <div style={{
@@ -405,6 +450,277 @@ function MedRow({ med, index, onUpdate, onDelete, canDelete, patientAllergies }:
   );
 }
 
+// ── PDF Generator ──────────────────────────────────────────────────────
+function generatePrescriptionPDF(opts: {
+  doctor: { name: string; role: string; letterhead?: string };
+  patient: { name: string; uhid: string; age?: number; sex?: string; blood_group?: string };
+  medicines: Array<{ name: string; strength?: string; dose: string; frequency: string; duration: string; instructions?: string }>;
+  advice?: string;
+  followUp?: string;
+  weight?: string;
+  slipToken: string;
+  prePrinted?: boolean;
+}): string {
+  const doc = new jsPDF({
+    orientation: 'p',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 15;
+
+  let y = margin;
+
+  // 1. Header (Letterhead or Brand)
+  doc.setTextColor(15, 23, 42); // slate-900
+
+  if (opts.prePrinted) {
+    // Leave 30mm blank space for pre-printed letterhead, and print date/time on the right
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    doc.text(`${dateStr}  ${timeStr}`, pageWidth - margin, y + 2, { align: 'right' });
+    y += 30; // 30mm spacing height
+  } else if (opts.doctor.letterhead) {
+    if (opts.doctor.letterhead.startsWith('data:image/')) {
+      try {
+        doc.addImage(opts.doctor.letterhead, 'PNG', margin, y, 100, 20);
+      } catch (e) {
+        console.error('Failed to add letterhead image to PDF:', e);
+      }
+      doc.setFont('Helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+      doc.text(`Dr. ${opts.doctor.name}`, pageWidth - margin, y + 2, { align: 'right' });
+      doc.text(`${opts.doctor.role || 'Doctor'}`, pageWidth - margin, y + 6, { align: 'right' });
+      doc.text(`${dateStr}  ${timeStr}`, pageWidth - margin, y + 10, { align: 'right' });
+      y += 24;
+    } else {
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(11);
+      const lines = doc.splitTextToSize(opts.doctor.letterhead, pageWidth - margin * 2 - 40);
+      doc.text(lines, margin, y + 2);
+      
+      // Add date/time on the right
+      doc.setFont('Helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+      doc.text(`Dr. ${opts.doctor.name}`, pageWidth - margin, y + 2, { align: 'right' });
+      doc.text(`${opts.doctor.role || 'Doctor'}`, pageWidth - margin, y + 6, { align: 'right' });
+      doc.text(`${dateStr}  ${timeStr}`, pageWidth - margin, y + 10, { align: 'right' });
+      
+      y += Math.max(lines.length * 5 + 4, 15);
+    }
+  } else {
+    // Default brand header
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor(29, 78, 216); // blue-700
+    doc.text('Medicos Hospital', margin, y + 3);
+    
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Compassionate Care . Advanced Medicine', margin, y + 7);
+    doc.text('LAN Ward, Main Building | +91-XXXX-XXXXXX', margin, y + 10.5);
+
+    // Doctor info on the right
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`Dr. ${opts.doctor.name}`, pageWidth - margin, y + 2, { align: 'right' });
+    
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`${opts.doctor.role || 'Doctor'}`, pageWidth - margin, y + 6, { align: 'right' });
+    const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    doc.text(dateStr, pageWidth - margin, y + 9.5, { align: 'right' });
+
+    y += 15;
+  }
+
+  // Draw separation line
+  doc.setDrawColor(29, 78, 216);
+  doc.setLineWidth(0.8);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 5;
+
+  // 2. Patient Info Block
+  doc.setFillColor(239, 246, 255); // light blue
+  doc.setDrawColor(191, 219, 254);
+  doc.setLineWidth(0.25);
+  doc.rect(margin, y, pageWidth - margin * 2, 14, 'DF');
+
+  doc.setTextColor(59, 130, 246);
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.text('PATIENT', margin + 4, y + 4.5);
+  doc.text('UHID', margin + 60, y + 4.5);
+  doc.text('AGE / SEX', margin + 110, y + 4.5);
+  doc.text('BLOOD GROUP', margin + 145, y + 4.5);
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(10);
+  doc.text(opts.patient.name, margin + 4, y + 9.5);
+  doc.text(opts.patient.uhid || '--', margin + 60, y + 9.5);
+  doc.text(`${opts.patient.age ?? '?'}y  ${opts.patient.sex ?? ''}`, margin + 110, y + 9.5);
+  doc.text(opts.patient.blood_group || '--', margin + 145, y + 9.5);
+
+  if (opts.weight) {
+    // Add weight at the end
+    doc.setFontSize(7);
+    doc.setTextColor(59, 130, 246);
+    doc.text('WEIGHT', margin + 165, y + 4.5);
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text(opts.weight, margin + 165, y + 9.5);
+  }
+
+  y += 20;
+
+  // 3. Rx symbol
+  doc.setFont('Times', 'italic');
+  doc.setFontSize(28);
+  doc.setTextColor(29, 78, 216);
+  doc.text('Rx', margin, y);
+  y += 4;
+
+  // 4. Medicines Table Header
+  doc.setFillColor(29, 78, 216);
+  doc.rect(margin, y, pageWidth - margin * 2, 7, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text('#', margin + 2, y + 4.5);
+  doc.text('Medicine', margin + 8, y + 4.5);
+  doc.text('Dose', margin + 70, y + 4.5);
+  doc.text('Frequency', margin + 100, y + 4.5);
+  doc.text('Duration', margin + 130, y + 4.5);
+  doc.text('Qty', margin + 155, y + 4.5);
+  doc.text('Instructions', margin + 167, y + 4.5);
+  
+  y += 7;
+
+  // 5. Medicines List
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+
+  opts.medicines.forEach((med, idx) => {
+    // Alternating rows
+    if (idx % 2 === 0) {
+      doc.setFillColor(248, 250, 252);
+      doc.rect(margin, y, pageWidth - margin * 2, 8, 'F');
+    }
+    
+    doc.setFont('Helvetica', 'bold');
+    doc.text(`${idx + 1}`, margin + 2, y + 5.5);
+    doc.text(med.name, margin + 8, y + 5.5);
+    
+    doc.setFont('Helvetica', 'normal');
+    doc.text(med.dose, margin + 70, y + 5.5);
+    doc.text(med.frequency, margin + 100, y + 5.5);
+    doc.text(med.duration, margin + 130, y + 5.5);
+    
+    // Qty calculate
+    const u = doseUnits(med.dose), f = freqPerDay(med.frequency), d = durationDays(med.duration);
+    const qtyVal = (u !== null && f !== null && d !== null) ? Math.ceil(u * f * d) : '--';
+    doc.setFont('Helvetica', 'bold');
+    doc.text(String(qtyVal), margin + 155, y + 5.5);
+    
+    doc.setFont('Helvetica', 'normal');
+    doc.text(med.instructions || '--', margin + 167, y + 5.5);
+    
+    y += 8;
+  });
+
+  y += 6;
+
+  // 6. Doctor Advice Box
+  if (opts.advice) {
+    doc.setFillColor(255, 251, 235); // amber-50
+    doc.setDrawColor(252, 211, 77); // amber-300
+    
+    // Auto-wrap advice text
+    const adviceLines = doc.splitTextToSize(opts.advice, pageWidth - margin * 2 - 8);
+    const boxHeight = adviceLines.length * 5 + 10;
+    
+    doc.rect(margin, y, pageWidth - margin * 2, boxHeight, 'DF');
+    
+    doc.setTextColor(180, 83, 9); // amber-700
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.text("DOCTOR'S INSTRUCTIONS", margin + 4, y + 5);
+    
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(9.5);
+    doc.text(adviceLines, margin + 4, y + 10);
+    
+    y += boxHeight + 8;
+  }
+
+  // 7. Footer (Follow-up & Signature)
+  y = Math.max(y, pageHeight - 45); // position near the bottom
+
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.2);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 6;
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(10);
+  if (opts.followUp) {
+    const fDate = new Date(opts.followUp).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    doc.text(`Follow-up: `, margin, y);
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(29, 78, 216);
+    doc.text(fDate, margin + 20, y);
+  } else {
+    doc.text('Next visit: _______________', margin, y);
+  }
+
+  // Signature line
+  doc.setDrawColor(15, 23, 42);
+  doc.setLineWidth(0.5);
+  doc.line(pageWidth - margin - 50, y + 4, pageWidth - margin, y + 4);
+  
+  doc.setTextColor(71, 85, 105);
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text(`Dr. ${opts.doctor.name} . Signature & Stamp`, pageWidth - margin - 25, y + 8, { align: 'center' });
+
+  y += 15;
+
+  // 8. Bottom Token & Disclaimer
+  doc.setFillColor(241, 245, 249);
+  doc.setDrawColor(226, 232, 240);
+  doc.rect(margin, y, 45, 6, 'DF');
+  
+  doc.setTextColor(100, 116, 139);
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text(`Rx Token: ${opts.slipToken}`, margin + 3, y + 4);
+
+  doc.setFont('Helvetica', 'italic');
+  doc.setFontSize(7.5);
+  doc.text('Computer-generated prescription. Valid only with doctor\'s signature & stamp.', pageWidth - margin, y + 4, { align: 'right' });
+
+  // Output as base64 data URI
+  const pdfOutput = doc.output('datauristring');
+  return pdfOutput;
+}
+
 // ── Main component ────────────────────────────────────────────────────
 export default function PrescriptionPage({ onNavigate, data }: { onNavigate:(p:string,d?:any)=>void; data?:any }) {
   const { user } = useAuthStore();
@@ -419,6 +735,8 @@ export default function PrescriptionPage({ onNavigate, data }: { onNavigate:(p:s
   const [success, setSuccess]       = useState<any>(null);
   const [error, setError]           = useState('');
   const [allergyOverride, setAllergyOverride] = useState(false);
+  const [prePrintedLetterhead, setPrePrintedLetterhead] = useState(false);
+  const [dbMeds, setDbMeds]         = useState<Medicine[]>([]);
 
   const setMed = (i:number, k:string, v:string) => {
     setMeds(ms => ms.map((m,j) => j===i ? {...m,[k]:v} : m));
@@ -433,6 +751,36 @@ export default function PrescriptionPage({ onNavigate, data }: { onNavigate:(p:s
       catch { setPatients(await db.patients.toArray()); }
     })();
   }, []);
+
+  useEffect(() => {
+    db.medicines
+      .toArray()
+      .then(records => {
+        const active = records.filter(m => m.is_active !== 0);
+        if (active.length > 0) {
+          const mapped = active.map(m => ({
+            name: m.name,
+            generics: m.generics || [],
+            strengths: m.strengths || [],
+            defaultDose: m.default_dose || m.strengths[0] || '1 tablet',
+            category: m.category || ''
+          }));
+          mapped.sort((a, b) => a.name.localeCompare(b.name));
+          setDbMeds(mapped);
+        }
+      })
+      .catch(err => {
+        console.error('Failed to load medicines from IndexedDB:', err);
+      });
+  }, []);
+
+  const medicinesList = useMemo(() => {
+    const list = dbMeds.length > 0 ? dbMeds : MEDICINES;
+    return list.map(m => ({
+      ...m,
+      defaultDose: cleanDefaultDose(m.defaultDose)
+    }));
+  }, [dbMeds]);
 
   const filteredPatients = patientSearch
     ? patients.filter(p => p.name?.toLowerCase().includes(patientSearch.toLowerCase()) || p.uhid?.includes(patientSearch) || p.phone?.includes(patientSearch))
@@ -451,8 +799,8 @@ export default function PrescriptionPage({ onNavigate, data }: { onNavigate:(p:s
 
   // Compute which medicine rows have allergy conflicts
   const allergyConflicts = useMemo(() =>
-    meds.map(m => checkAllergyConflict(m.name, patientAllergies)),
-  [meds, patientAllergies]);
+    meds.map(m => checkAllergyConflict(m.name, patientAllergies, medicinesList)),
+  [meds, patientAllergies, medicinesList]);
   const hasAllergyConflict = allergyConflicts.some(Boolean);
 
   async function submit(e:React.FormEvent) {
@@ -493,8 +841,38 @@ export default function PrescriptionPage({ onNavigate, data }: { onNavigate:(p:s
     };
     try {
       const res = await apiClient.post('/prescriptions', payload);
+      await db.prescriptions.put({ ...res.data, _syncStatus: 'synced' });
       setSuccess(res.data);
-    } catch {
+      
+      // Generate PDF
+      const pdfBase64 = generatePrescriptionPDF({
+        doctor: { name: user?.name ?? 'Doctor', role: user?.role ?? '', letterhead: user?.letterhead },
+        patient: {
+          name: selectedPatient?.name ?? '—',
+          uhid: selectedPatient?.uhid ?? '—',
+          age: selectedPatient?.age,
+          sex: selectedPatient?.sex,
+          blood_group: selectedPatient?.blood_group
+        },
+        medicines: meds.map(m => ({ ...m, name: m.name.trim() })),
+        advice: advice || undefined,
+        followUp: followUp || undefined,
+        weight: patientWeight || undefined,
+        slipToken: slipToken,
+        prePrinted: prePrintedLetterhead,
+      });
+
+      // Upload PDF to patient-uploads
+      const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      await apiClient.post('/patient-uploads', {
+        patient_id: patientId,
+        title: `Prescription — ${dateStr}`,
+        file_url: pdfBase64,
+        file_type: 'application/pdf',
+        notes: `Automatically saved prescription PDF. Token: ${slipToken}`,
+      });
+    } catch (err) {
+      console.error('Failed to save prescription or upload PDF:', err);
       await markPending(db.prescriptions, payload, 'create');
       await db.prescriptions.put(payload);
       setSuccess(payload);
@@ -505,10 +883,11 @@ export default function PrescriptionPage({ onNavigate, data }: { onNavigate:(p:s
     if (!success) return;
     const patient = patients.find((p: any) => p.id === patientId);
     printPrescriptionSlip({
-      doctor:  { name: user?.name ?? 'Doctor', role: user?.role ?? '' },
+      doctor:  { name: user?.name ?? 'Doctor', role: user?.role ?? '', letterhead: user?.letterhead },
       patient: { name: patient?.name ?? '—', uhid: patient?.uhid ?? '—', age: patient?.age, sex: patient?.sex, blood_group: patient?.blood_group },
       medicines: success.medicines, advice, followUp,
       weight: patientWeight, slipToken: success.slip_token,
+      prePrinted: prePrintedLetterhead,
     });
   }
 
@@ -521,6 +900,10 @@ export default function PrescriptionPage({ onNavigate, data }: { onNavigate:(p:s
           <div style={{fontSize:17,fontWeight:700,color:'var(--text)'}}>Prescription Saved</div>
           <div style={{color:'var(--text-muted)',fontSize:13,marginTop:4}}>Token: <strong>{success.slip_token}</strong></div>
         </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text)', cursor: 'pointer', margin: '8px 0 12px' }}>
+          <input type="checkbox" checked={prePrintedLetterhead} onChange={e => setPrePrintedLetterhead(e.target.checked)} />
+          Print on pre-printed letterhead paper (leaves blank spacing at top)
+        </label>
         <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center'}}>
           <button className="btn btn-primary" onClick={printSlip}>🖨 Print Slip</button>
           <button className="btn btn-secondary" onClick={() => onNavigate('patient_detail', { patientId, ts: Date.now() })}>View Patient</button>
@@ -619,6 +1002,7 @@ export default function PrescriptionPage({ onNavigate, data }: { onNavigate:(p:s
               onDelete={() => delMed(i)}
               canDelete={meds.length > 1}
               patientAllergies={patientAllergies}
+              medicinesList={medicinesList}
             />
           ))}
         </div>
@@ -639,6 +1023,17 @@ export default function PrescriptionPage({ onNavigate, data }: { onNavigate:(p:s
         </div>
       </div>
 
+      {/* Print Settings */}
+      <div className="card">
+        <div className="card-header"><div className="card-title">🖨 Print Settings</div></div>
+        <div className="card-body">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={prePrintedLetterhead} onChange={e => setPrePrintedLetterhead(e.target.checked)} />
+            Print on pre-printed letterhead paper (leaves 110px blank spacing at top of the slip)
+          </label>
+        </div>
+      </div>
+ 
       <div style={{display:'flex',gap:8,justifyContent:'flex-end',paddingBottom:16}}>
         <button type="button" className="btn btn-ghost" onClick={() => onNavigate('patients')}>Cancel</button>
         <button type="submit" className="btn btn-primary" disabled={saving}>

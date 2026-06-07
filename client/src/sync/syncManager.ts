@@ -93,6 +93,7 @@ async function markSynced(tableName: string, id: string) {
   const tableMap: Record<string, any> = {
     patients: db.patients, encounters: db.encounters, vitals: db.vitals,
     prescriptions: db.prescriptions, appointments: db.appointments, billing: db.billing,
+    medicines: db.medicines,
   };
   const table = tableMap[tableName];
   if (table) await table.update(id, { _syncStatus: 'synced' });
@@ -104,13 +105,14 @@ async function pullFromServer(): Promise<void> {
   const res = await apiClient.get('/sync/pull', { params: { since: lastSync } });
   const { data, pulledAt } = res.data;
 
-  await db.transaction('rw', [db.patients, db.encounters, db.vitals, db.prescriptions, db.appointments, db.billing], async () => {
+  await db.transaction('rw', [db.patients, db.encounters, db.vitals, db.prescriptions, db.appointments, db.billing, db.medicines], async () => {
     if (data.patients?.length)      await db.patients.bulkPut(data.patients.map((r: any) => ({ ...r, _syncStatus: 'synced', allergies: safeParse(r.allergies), chronic_conditions: safeParse(r.chronic_conditions), current_medications: safeParse(r.current_medications) })));
     if (data.encounters?.length)    await db.encounters.bulkPut(data.encounters.map((r: any) => ({ ...r, _syncStatus: 'synced', diagnosis: safeParse(r.diagnosis) })));
     if (data.vitals?.length)        await db.vitals.bulkPut(data.vitals.map((r: any) => ({ ...r, _syncStatus: 'synced' })));
     if (data.prescriptions?.length) await db.prescriptions.bulkPut(data.prescriptions.map((r: any) => ({ ...r, _syncStatus: 'synced', medicines: safeParse(r.medicines) })));
     if (data.appointments?.length)  await db.appointments.bulkPut(data.appointments.map((r: any) => ({ ...r, _syncStatus: 'synced' })));
     if (data.billing?.length)       await db.billing.bulkPut(data.billing.map((r: any) => ({ ...r, _syncStatus: 'synced', items: safeParse(r.items) })));
+    if (data.medicines?.length)     await db.medicines.bulkPut(data.medicines.map((r: any) => ({ ...r, _syncStatus: 'synced', generics: safeParse(r.generics), strengths: safeParse(r.strengths) })));
   });
 
   await setLastSync(pulledAt);

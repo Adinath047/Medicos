@@ -25,7 +25,7 @@ async function authMiddleware(req, res, next) {
 
     // Retrieve user details from our users table
     const dbUser = await queryOne(
-      'SELECT name, role, staff_type, hospital_id, photo_url, is_active FROM users WHERE id = $1',
+      'SELECT name, role, staff_type, hospital_id, photo_url, is_active, specialization, license_number, consultation_fee, followup_fee, letterhead FROM users WHERE id = $1',
       [user.id]
     );
 
@@ -41,6 +41,11 @@ async function authMiddleware(req, res, next) {
       staff_type: dbUser.staff_type || 'front_desk',
       hospitalId: dbUser.hospital_id,
       photoUrl: dbUser.photo_url || null,
+      specialization: dbUser.specialization || null,
+      licenseNumber: dbUser.license_number || null,
+      consultationFee: parseFloat(dbUser.consultation_fee) || 0,
+      followupFee: parseFloat(dbUser.followup_fee) || 0,
+      letterhead: dbUser.letterhead || null,
     };
     req.token = token;
     next();

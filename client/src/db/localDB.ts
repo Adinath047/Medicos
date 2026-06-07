@@ -107,6 +107,19 @@ export interface LocalMedicine {
   instructions?:string;
 }
 
+export interface LocalMedicineRecord extends Partial<SyncMeta> {
+  id:           string;
+  hospital_id:  string;
+  name:         string;
+  generics:     string[];
+  strengths:    string[];
+  default_dose?: string;
+  category?:    string;
+  is_active:    number;
+  created_at:   string;
+  updated_at:   string;
+}
+
 export interface LocalPrescription extends Partial<SyncMeta> {
   id:             string;
   hospital_id:    string;
@@ -180,19 +193,21 @@ class EMRDatabase extends Dexie {
   prescriptions!: Table<LocalPrescription>;
   appointments!:  Table<LocalAppointment>;
   billing!:       Table<LocalBilling>;
+  medicines!:     Table<LocalMedicineRecord>;
   syncQueue!:     Table<SyncQueueItem>;
   meta!:          Table<{ key: string; value: string }>;
 
   constructor() {
     super('MedicosEMR');
 
-    this.version(1).stores({
+    this.version(2).stores({
       patients:      'id, uhid, hospital_id, name, phone, _syncStatus, created_at, updated_at',
       encounters:    'id, patient_id, doctor_id, hospital_id, created_at, _syncStatus',
       vitals:        'id, patient_id, encounter_id, recorded_at, _syncStatus',
       prescriptions: 'id, patient_id, doctor_id, encounter_id, created_at, _syncStatus',
       appointments:  'id, patient_id, doctor_id, date, status, hospital_id, _syncStatus',
       billing:       'id, patient_id, payment_status, hospital_id, created_at, _syncStatus',
+      medicines:     'id, hospital_id, name, category, _syncStatus',
       syncQueue:     '++id, table, operation, createdAt',
       meta:          'key',
     });

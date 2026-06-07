@@ -10,6 +10,76 @@ export default function FrontDeskDashboard({ onNavigate }: { onNavigate: (p: str
   const [patientsMap, setPatientsMap]   = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
 
+  // Emergency Alert state
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
+  const [alertDoctors, setAlertDoctors] = useState<any[]>([]);
+  const [alertPatients, setAlertPatients] = useState<any[]>([]);
+  const [selectedDocId, setSelectedDocId] = useState('');
+  const [selectedPatId, setSelectedPatId] = useState('');
+  const [alertMessage, setAlertMessage] = useState('Emergency assistance required at front desk!');
+  const [submittingAlert, setSubmittingAlert] = useState(false);
+
+  useEffect(() => {
+    if (showEmergencyModal) {
+      setSelectedDocId('');
+      setSelectedPatId('');
+      setAlertMessage('Emergency assistance required at front desk!');
+      
+      apiClient.get('/users/doctors')
+        .then(res => setAlertDoctors(res.data || []))
+        .catch(() => {});
+        
+      apiClient.get('/patients?limit=500')
+        .then(res => setAlertPatients(res.data.patients || []))
+        .catch(() => {});
+    }
+  }, [showEmergencyModal]);
+
+  async function handleSendAlert(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedDocId || !alertMessage.trim()) return;
+    
+    setSubmittingAlert(true);
+    try {
+      await apiClient.post('/notifications', {
+        doctor_id: selectedDocId,
+        patient_id: selectedPatId || undefined,
+        message: alertMessage.trim(),
+      });
+      alert('Emergency alert sent to doctor.');
+      setShowEmergencyModal(false);
+    } catch (err: any) {
+      alert(err?.response?.data?.error || 'Failed to trigger emergency alert.');
+    } finally {
+      setSubmittingAlert(false);
+    }
+  }
+
+  async function updateAppointmentStatus(id: string, status: string) {
+    try {
+      const r = await apiClient.put(`/appointments/${id}/status`, { status });
+      await db.appointments.put({ ...r.data, _syncStatus: 'synced' });
+      setAppointments(prev => prev.map(x => x.id === id ? r.data : x));
+    } catch {
+      const existing = appointments.find(x => x.id === id);
+      if (existing) {
+        const payload = { ...existing, status, _syncStatus: 'pending', updated_at: new Date().toISOString() };
+        await db.appointments.put(payload);
+        await db.syncQueue.add({
+          table: 'appointments',
+          operation: 'update',
+          payload,
+          clientUpdatedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          attempts: 0
+        });
+      } else {
+        await db.appointments.update(id, { status, _syncStatus: 'pending' });
+      }
+      setAppointments(prev => prev.map(x => x.id === id ? { ...x, status } : x));
+    }
+  }
+
   useEffect(() => {
     (async () => {
       try {
@@ -79,6 +149,9 @@ export default function FrontDeskDashboard({ onNavigate }: { onNavigate: (p: str
             <button className="btn" onClick={() => onNavigate('billing')} style={{ justifyContent: 'center' }}>
               💳 Create Bill
             </button>
+            <button className="btn btn-danger" onClick={() => setShowEmergencyModal(true)} style={{ justifyContent: 'center', background: '#dc2626', color: '#fff', border: 'none' }}>
+              🚨 Trigger Emergency Alert
+            </button>
           </div>
         </div>
 
@@ -123,11 +196,25 @@ export default function FrontDeskDashboard({ onNavigate }: { onNavigate: (p: str
                         <div style={{ fontSize: 12, padding: '4px 8px', borderRadius: 20, fontWeight: 600, background: a.status === 'Completed' ? '#dcfce7' : a.status === 'Checked-In' ? '#e0e7ff' : '#f1f5f9', color: a.status === 'Completed' ? '#166534' : a.status === 'Checked-In' ? '#3730a3' : '#475569' }}>
                           {a.status || 'Scheduled'}
                         </div>
-                        {a.status === 'Checked-In' && user?.role === 'doctor' && (
-                          <button className="btn btn-primary btn-sm" style={{ padding: '2px 8px', fontSize: 11, minHeight: 24 }} onClick={() => onNavigate('new_encounter', { patientId: a.patient_id, appointmentId: a.id })}>
-                            Call Next
-                          </button>
-                        )}
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          {['Scheduled', 'Confirmed'].includes(a.status) && (
+                            <button className="btn btn-secondary btn-sm" style={{ padding: '2px 8px', fontSize: 11, minHeight: 24 }} onClick={() => updateAppointmentStatus(a.id, 'Checked-In')}>
+                              Check-In
+                            </button>
+                          )}
+                          {a.status === 'Checked-In' && (
+                            <>
+                              {user?.role === 'doctor' && (
+                                <button className="btn btn-primary btn-sm" style={{ padding: '2px 8px', fontSize: 11, minHeight: 24 }} onClick={() => onNavigate('new_encounter', { patientId: a.patient_id, appointmentId: a.id })}>
+                                  Call Next
+                                </button>
+                              )}
+                              <button className="btn btn-success btn-sm" style={{ padding: '2px 8px', fontSize: 11, minHeight: 24, background: '#166534', color: '#fff', border: 'none' }} onClick={() => updateAppointmentStatus(a.id, 'Completed')}>
+                                Check-Out
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -170,6 +257,68 @@ export default function FrontDeskDashboard({ onNavigate }: { onNavigate: (p: str
         </div>
 
       </div>
+
+      {/* Emergency Modal */}
+      {showEmergencyModal && (
+        <div className="modal-overlay" onClick={() => setShowEmergencyModal(false)}>
+          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">Trigger Emergency Alert</div>
+              <button className="modal-close" onClick={() => setShowEmergencyModal(false)}>✕</button>
+            </div>
+            <form onSubmit={handleSendAlert}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="form-group">
+                  <label className="form-label">Alert Doctor *</label>
+                  <select
+                    className="input"
+                    value={selectedDocId}
+                    onChange={e => setSelectedDocId(e.target.value)}
+                    required
+                  >
+                    <option value="">— Select Doctor to Alert —</option>
+                    {alertDoctors.map(d => (
+                      <option key={d.id} value={d.id}>Dr. {d.name} ({d.specialization || 'General'})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Associated Patient (Optional)</label>
+                  <select
+                    className="input"
+                    value={selectedPatId}
+                    onChange={e => setSelectedPatId(e.target.value)}
+                  >
+                    <option value="">— Select Patient —</option>
+                    {alertPatients.map(p => (
+                      <option key={p.id} value={p.id}>{p.name} ({p.uhid})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Emergency Message *</label>
+                  <textarea
+                    className="input"
+                    rows={3}
+                    placeholder="Describe the emergency..."
+                    value={alertMessage}
+                    onChange={e => setAlertMessage(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowEmergencyModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-danger" style={{ background: '#dc2626', color: '#fff', border: 'none' }} disabled={submittingAlert || !selectedDocId}>
+                  {submittingAlert ? 'Sending Alert...' : '🚨 Send Emergency Alert'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -40,15 +40,16 @@ function openPrintWindow(html: string) {
 // PRESCRIPTION SLIP
 // ─────────────────────────────────────────────────────────────
 export function printPrescriptionSlip(opts: {
-  doctor:    { name: string; role: string; qualification?: string; regNo?: string };
+  doctor:    { name: string; role: string; qualification?: string; regNo?: string; letterhead?: string };
   patient:   { name: string; uhid: string; age?: number; sex?: string; blood_group?: string };
   medicines: Array<{ name: string; strength?: string; dose: string; frequency: string; duration: string; instructions?: string }>;
   advice?:   string;
   followUp?: string;
   weight?:   string;
   slipToken: string;
+  prePrinted?: boolean;
 }) {
-  const { doctor, patient, medicines, advice, followUp, weight, slipToken } = opts;
+  const { doctor, patient, medicines, advice, followUp, weight, slipToken, prePrinted } = opts;
   const date = new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
   const time = new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
 
@@ -96,6 +97,46 @@ export function printPrescriptionSlip(opts: {
       <td class="note">${m.instructions || '—'}</td>
     </tr>`).join('');
 
+  let headerHtml = '';
+  if (prePrinted) {
+    headerHtml = `<div style="height: 110px; width: 100%; margin-bottom: 15px; display: flex; justify-content: flex-end; align-items: flex-end;">
+                    <div style="text-align: right; font-size: 11px; color: #64748b;">${date} &nbsp;·&nbsp; ${time}</div>
+                  </div>`;
+  } else if (doctor.letterhead) {
+    if (doctor.letterhead.startsWith('data:image/')) {
+      headerHtml = `<div style="width: 100%; border-bottom: 3px solid #1d4ed8; padding-bottom: 12px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: flex-end;">
+                      <img src="${doctor.letterhead}" style="max-height: 90px; max-width: 70%; object-fit: contain;" alt="Letterhead" />
+                      <div style="text-align: right; font-size: 11px; color: #64748b;">
+                        <strong>Dr. ${doctor.name}</strong><br/>
+                        ${doctor.qualification || doctor.role}<br/>
+                        ${date} &nbsp;·&nbsp; ${time}
+                      </div>
+                    </div>`;
+    } else {
+      headerHtml = `<div style="width: 100%; border-bottom: 3px solid #1d4ed8; padding-bottom: 12px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: flex-end;">
+                      <div style="font-size: 13.5px; font-weight: 600; line-height: 1.5; color: #0f172a; white-space: pre-wrap;">${doctor.letterhead}</div>
+                      <div style="text-align: right; font-size: 11px; color: #64748b;">
+                        <strong>Dr. ${doctor.name}</strong><br/>
+                        ${doctor.qualification || doctor.role}<br/>
+                        ${date} &nbsp;·&nbsp; ${time}
+                      </div>
+                    </div>`;
+    }
+  } else {
+    headerHtml = `<div class="header">
+        <div>
+          <div class="brand-name">🏥 ${BRAND.name}</div>
+          <div class="brand-sub">${BRAND.tagline}</div>
+          <div class="brand-addr">${BRAND.address} &nbsp;|&nbsp; ${BRAND.phone}</div>
+        </div>
+        <div class="doctor-block">
+          <div class="doctor-name">Dr. ${doctor.name}</div>
+          <div class="doctor-sub">${doctor.qualification || doctor.role}${doctor.regNo ? `<br/>Reg. No: ${doctor.regNo}` : ''}</div>
+          <div class="doctor-sub" style="margin-top:4px;color:#94a3b8">${date} &nbsp;·&nbsp; ${time}</div>
+        </div>
+      </div>`;
+  }
+
   openPrintWindow(`<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"/>
 <title>Rx — ${patient.name}</title>
@@ -103,7 +144,7 @@ export function printPrescriptionSlip(opts: {
   * { margin:0;padding:0;box-sizing:border-box; }
   body { font-family:'Segoe UI',Arial,sans-serif; color:#0f172a; background:#fff; font-size:13px; }
   .page { padding:14mm 16mm 10mm; max-width:210mm; margin:0 auto; }
-
+  
   /* Header */
   .header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:12px; border-bottom:3px solid #1d4ed8; }
   .brand-name { font-size:22px; font-weight:900; color:#1d4ed8; letter-spacing:-0.5px; }
@@ -160,18 +201,7 @@ export function printPrescriptionSlip(opts: {
 </style>
 </head><body>
 <div class="page">
-  <div class="header">
-    <div>
-      <div class="brand-name">🏥 ${BRAND.name}</div>
-      <div class="brand-sub">${BRAND.tagline}</div>
-      <div class="brand-addr">${BRAND.address} &nbsp;|&nbsp; ${BRAND.phone}</div>
-    </div>
-    <div class="doctor-block">
-      <div class="doctor-name">Dr. ${doctor.name}</div>
-      <div class="doctor-sub">${doctor.qualification || doctor.role}${doctor.regNo ? `<br/>Reg. No: ${doctor.regNo}` : ''}</div>
-      <div class="doctor-sub" style="margin-top:4px;color:#94a3b8">${date} &nbsp;·&nbsp; ${time}</div>
-    </div>
-  </div>
+  ${headerHtml}
 
   <div class="pt-box">
     <div class="pt-cell"><div class="pt-lbl">Patient</div><div class="pt-val">${patient.name}</div></div>

@@ -15,7 +15,8 @@ function validateMedicine(med, index) {
   if (!med || typeof med !== 'object') return [`medicines[${index}]: must be an object`];
   if (!med.name || String(med.name).trim().length < 1) errs.push(`medicines[${index}].name: required`);
   if (String(med.name || '').length > 200)              errs.push(`medicines[${index}].name: too long (max 200 chars)`);
-  if (!med.dosage || String(med.dosage).trim().length < 1) errs.push(`medicines[${index}].dosage: required`);
+  const dosage = med.dosage || med.dose;
+  if (!dosage || String(dosage).trim().length < 1) errs.push(`medicines[${index}].dosage: required`);
   if (!med.frequency || String(med.frequency).trim().length < 1) errs.push(`medicines[${index}].frequency: required`);
   if (med.duration_days !== undefined && med.duration_days !== null && med.duration_days !== '') {
     const d = parseInt(med.duration_days);
@@ -31,7 +32,8 @@ router.get('/', authMiddleware, async (req, res) => {
   const hid = role === 'super_admin' ? null : hospitalId;
   const safeLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 200);
 
-  let sql = `SELECT rx.*, p.name as patient_name, p.uhid, u.name as doctor_name
+  let sql = `SELECT rx.*, p.name as patient_name, p.uhid, p.age, p.sex, p.blood_group, p.weight,
+                    u.name as doctor_name, u.role as doctor_role, u.letterhead as doctor_letterhead
              FROM prescriptions rx
              JOIN patients p ON rx.patient_id = p.id
              JOIN users u ON rx.doctor_id = u.id
@@ -58,12 +60,12 @@ router.get('/:id', authMiddleware, async (req, res) => {
   try {
     const row = await queryOne(
       `SELECT rx.*, p.name as patient_name, p.uhid, p.age, p.sex, p.blood_group, p.weight, p.allergies,
-              u.name as doctor_name, u.phone as doctor_phone, u.email as doctor_email
+              u.name as doctor_name, u.phone as doctor_phone, u.email as doctor_email, u.role as doctor_role, u.letterhead as doctor_letterhead
        FROM prescriptions rx
        JOIN patients p ON rx.patient_id = p.id
        JOIN users u ON rx.doctor_id = u.id
-       WHERE rx.id = $1`,
-      [req.params.id]
+       WHERE rx.id = $1 AND rx.hospital_id = $2`,
+      [req.params.id, req.user.hospitalId]
     );
     if (!row) return res.status(404).json({ error: 'Not found' });
     res.json(parseJsonFields(row, ['medicines', 'allergies']));
@@ -81,7 +83,7 @@ router.get('/slip/:token', async (req, res) => {
   try {
     const row = await queryOne(
       `SELECT rx.*, p.name as patient_name, p.uhid, p.age, p.sex, p.blood_group, p.weight, p.allergies,
-              u.name as doctor_name, u.phone as doctor_phone
+              u.name as doctor_name, u.phone as doctor_phone, u.role as doctor_role, u.letterhead as doctor_letterhead
        FROM prescriptions rx
        JOIN patients p ON rx.patient_id = p.id
        JOIN users u ON rx.doctor_id = u.id
@@ -129,7 +131,7 @@ router.post('/',
 
     try {
       // Verify patient exists
-      const patient = await queryOne('SELECT id FROM patients WHERE id = $1 AND is_active = 1', [patient_id]);
+      const patient = await queryOne('SELECT id FROM patients WHERE id = $1 AND hospital_id = $2 AND is_active = 1', [patient_id, req.user.hospitalId]);
       if (!patient) return res.status(404).json({ error: 'Patient not found' });
 
       const hospitalId = bodyHid || req.user.hospitalId || 'hsp-001';
@@ -181,7 +183,7 @@ router.put('/:id',
     }
 
     try {
-      const existing = await queryOne('SELECT id FROM prescriptions WHERE id = $1', [req.params.id]);
+      const existing = await queryOne('SELECT id FROM prescriptions WHERE id = $1 AND hospital_id = $2', [req.params.id, req.user.hospitalId]);
       if (!existing) return res.status(404).json({ error: 'Prescription not found' });
 
       await run(

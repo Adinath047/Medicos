@@ -56,7 +56,8 @@ export default function NewEncounter({ onNavigate, data }: { onNavigate:(p:strin
       created_at: now, updated_at: now,
     };
     try {
-      await apiClient.post('/encounters', payload);
+      const res = await apiClient.post('/encounters', payload);
+      await db.encounters.put({ ...res.data, _syncStatus: 'synced' });
       setSuccess('Encounter saved to server ✓');
     } catch {
       await markPending(db.encounters, payload, 'create');

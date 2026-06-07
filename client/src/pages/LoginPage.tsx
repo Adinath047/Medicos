@@ -1,44 +1,130 @@
 // client/src/pages/LoginPage.tsx
 import React, { useState } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { validateEmail, validateRequired } from '../utils/validation';
+import { apiClient } from '../api/client';
+
+const ROLE_LABELS: Record<string, string> = {
+  admin:          'Administrator',
+  doctor:         'Doctor',
+  receptionist:   'Receptionist',
+  nurse:          'Nurse',
+  lab_technician: 'Lab Technician',
+  pharmacist:     'Pharmacist',
+  billing:        'Billing / Finance',
+};
 
 export default function LoginPage() {
   const { login } = useAuthStore();
-  const [email, setEmail]       = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError]       = useState('');
-  const [fieldErrors, setFieldErrors] = useState<Record<string,string>>({});
-  const [loading, setLoading]   = useState(false);
+  
+  // Hospital Verification
+  const [hospitalCode, setHospitalCode] = useState('');
+  const [hospitalName, setHospitalName] = useState('');
+  const [staff, setStaff]               = useState<any[]>([]);
+  const [step, setStep]                 = useState<'hospital' | 'auth'>('hospital');
+  
+  // Credentials
+  const [role, setRole]                 = useState('doctor');
+  const [selectedStaffId, setSelectedStaffId] = useState('');
+  const [password, setPassword]         = useState('');
+  
+  // Status
+  const [error, setError]               = useState('');
+  const [loading, setLoading]           = useState(false);
 
-  function validate(): boolean {
-    const errs: Record<string,string> = {};
-    const emailErr = validateRequired(email, 'Email') || validateEmail(email);
-    const passErr  = validateRequired(password, 'Password');
-    if (emailErr) errs.email    = emailErr;
-    if (passErr)  errs.password = passErr;
-    setFieldErrors(errs);
-    return Object.keys(errs).length === 0;
+  // Load saved hospital code on mount
+  React.useEffect(() => {
+    const savedCode = localStorage.getItem('last_hospital_code');
+    if (savedCode) {
+      setHospitalCode(savedCode);
+      verifyCode(savedCode, false);
+    }
+  }, []);
+
+  // Core verification logic
+  async function verifyCode(codeToVerify: string, saveToLocal = true) {
+    setError('');
+    setLoading(true);
+    try {
+      const res = await apiClient.get(`/auth/hospital/${codeToVerify.trim()}/staff`);
+      setHospitalName(res.data.hospital.name);
+      setStaff(res.data.staff);
+      setStep('auth');
+      
+      if (saveToLocal) {
+        localStorage.setItem('last_hospital_code', codeToVerify.trim().toLowerCase());
+      }
+      
+      // Pre-select first user of default role if available
+      const defaultRoleUsers = res.data.staff.filter((s: any) => s.role === 'doctor');
+      if (defaultRoleUsers.length > 0) {
+        setSelectedStaffId(defaultRoleUsers[0].id);
+      } else {
+        setSelectedStaffId('');
+      }
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Invalid Hospital Code or connection error.');
+      if (!saveToLocal) {
+        // Clear corrupt/invalid saved code
+        localStorage.removeItem('last_hospital_code');
+        setStep('hospital');
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
+  // Verify Hospital Code from manual form submission
+  async function handleVerifyHospital(e: React.FormEvent) {
+    e.preventDefault();
+    if (!hospitalCode.trim()) {
+      setError('Please enter a Hospital Code.');
+      return;
+    }
+    await verifyCode(hospitalCode);
+  }
+
+  // Handle Role Selection change
+  function handleRoleChange(selectedRole: string) {
+    setRole(selectedRole);
+    const filtered = staff.filter(s => s.role === selectedRole);
+    if (filtered.length > 0) {
+      setSelectedStaffId(filtered[0].id);
+    } else {
+      setSelectedStaffId('');
+    }
+  }
+
+  // Sign In using email and password
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    if (!validate()) return;
-    setLoading(true);
-    const ok = await login(email.trim(), password);
-    setLoading(false);
-    if (!ok) setError('Invalid email or password.');
-  }
+    if (!selectedStaffId) {
+      setError('Please select your staff name.');
+      return;
+    }
+    if (!password) {
+      setError('Please enter your password.');
+      return;
+    }
 
-  const inputStyle = (field: string) => ({
-    borderColor: fieldErrors[field] ? 'var(--danger)' : undefined,
-  });
+    const selectedUser = staff.find(s => s.id === selectedStaffId);
+    if (!selectedUser) {
+      setError('Selected user not found.');
+      return;
+    }
+
+    setLoading(true);
+    const ok = await login(selectedUser.email, password);
+    setLoading(false);
+    if (!ok) {
+      setError('Incorrect password. Please try again.');
+    }
+  }
 
   return (
     <div className="login-root">
       <div className="login-card">
-        <div className="login-logo-wrap" style={{ flexDirection:'column', alignItems:'center', textAlign:'center' }}>
+        <div className="login-logo-wrap" style={{ flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
           <div className="login-logo">🏥</div>
           <div>
             <div className="login-title">Medicos EMR</div>
@@ -46,46 +132,105 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:14 }} noValidate>
-          {error && <div className="alert alert-danger">⚠️ {error}</div>}
+        {error && <div className="alert alert-danger">⚠️ {error}</div>}
 
-          <div className="form-group">
-            <label className="form-label">Email *</label>
-            <input
-              className="input"
-              type="email"
-              id="login-email"
-              placeholder="doctor@hospital.local"
-              value={email}
-              onChange={e => { setEmail(e.target.value); setFieldErrors(f => ({ ...f, email: '' })); }}
-              autoComplete="username"
-              style={inputStyle('email')}
-            />
-            {fieldErrors.email && <div style={{ color:'var(--danger)', fontSize:12, marginTop:4 }}>⚠ {fieldErrors.email}</div>}
-          </div>
+        {step === 'hospital' ? (
+          <form onSubmit={handleVerifyHospital} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="form-group">
+              <label className="form-label">Enter Hospital Code *</label>
+              <input
+                className="input"
+                type="text"
+                placeholder="e.g. hsp-001"
+                value={hospitalCode}
+                onChange={e => setHospitalCode(e.target.value)}
+                required
+                style={{ textTransform: 'lowercase' }}
+              />
+            </div>
+            <button className="btn btn-primary btn-lg" type="submit" disabled={loading}>
+              {loading ? <div className="spinner spinner-sm"/> : 'Verify Hospital →'}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ background: 'var(--surface-alt)', padding: 10, borderRadius: 8, border: '1px solid var(--border)', textAlign: 'center', marginBottom: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>HOSPITAL</div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--primary)' }}>{hospitalName}</div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ fontSize: 11, padding: 0, minHeight: 'auto', marginTop: 4, color: 'var(--danger)' }}
+                onClick={() => {
+                  setStep('hospital');
+                  setHospitalCode('');
+                  setStaff([]);
+                  setSelectedStaffId('');
+                  setPassword('');
+                  localStorage.removeItem('last_hospital_code');
+                }}
+              >
+                Change Hospital
+              </button>
+            </div>
 
-          <div className="form-group">
-            <label className="form-label">Password *</label>
-            <input
-              className="input"
-              type="password"
-              id="login-password"
-              placeholder="••••••••"
-              value={password}
-              onChange={e => { setPassword(e.target.value); setFieldErrors(f => ({ ...f, password: '' })); }}
-              autoComplete="current-password"
-              style={inputStyle('password')}
-            />
-            {fieldErrors.password && <div style={{ color:'var(--danger)', fontSize:12, marginTop:4 }}>⚠ {fieldErrors.password}</div>}
-          </div>
+            <div className="form-group">
+              <label className="form-label">Select Role *</label>
+              <select
+                className="input"
+                value={role}
+                onChange={e => handleRoleChange(e.target.value)}
+              >
+                {Object.entries(ROLE_LABELS).map(([r, label]) => (
+                  <option key={r} value={r}>{label}</option>
+                ))}
+              </select>
+            </div>
 
-          <button className="btn btn-primary btn-lg" type="submit" disabled={loading} id="login-submit">
-            {loading ? <><div className="spinner spinner-sm"/>Signing in…</> : '→ Sign In'}
-          </button>
-        </form>
+            <div className="form-group">
+              <label className="form-label">Select Name *</label>
+              <select
+                className="input"
+                value={selectedStaffId}
+                onChange={e => setSelectedStaffId(e.target.value)}
+                required
+              >
+                <option value="">— Select Staff Member —</option>
+                {staff
+                  .filter(s => s.role === role)
+                  .map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))
+                }
+              </select>
+              {staff.filter(s => s.role === role).length === 0 && (
+                <div style={{ color: 'var(--warning)', fontSize: 12, marginTop: 4 }}>
+                  ⚠️ No active staff registered under this role.
+                </div>
+              )}
+            </div>
 
-        <div style={{ textAlign:'center', fontSize:11, color:'var(--text-muted)', borderTop:'1px solid var(--border)', paddingTop:14 }}>
-          🔒 Data stored locally on this device · Works fully offline
+            <div className="form-group">
+              <label className="form-label">Enter Password *</label>
+              <input
+                className="input"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+              />
+            </div>
+
+            <button className="btn btn-primary btn-lg" type="submit" disabled={loading || !selectedStaffId}>
+              {loading ? <><div className="spinner spinner-sm"/>Signing in…</> : '→ Sign In'}
+            </button>
+          </form>
+        )}
+
+        <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 14 }}>
+          🔒 Data stored securely in cloud database · Sync enabled
         </div>
       </div>
     </div>

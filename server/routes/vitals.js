@@ -36,10 +36,11 @@ function checkRange(value, key, errors) {
 // GET /api/vitals?patient_id=&encounter_id=
 router.get('/', authMiddleware, async (req, res) => {
   const { patient_id, encounter_id, limit = 20 } = req.query;
+  const { hospitalId } = req.user;
   const safeLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 200);
-  let sql = 'SELECT v.*, u.name as recorded_by_name FROM vitals v LEFT JOIN users u ON v.recorded_by = u.id WHERE 1=1';
-  const params = [];
-  let index = 1;
+  let sql = 'SELECT v.*, u.name as recorded_by_name FROM vitals v LEFT JOIN users u ON v.recorded_by = u.id WHERE v.hospital_id = $1';
+  const params = [hospitalId];
+  let index = 2;
   if (patient_id)   { sql += ` AND v.patient_id = $${index++}`;   params.push(patient_id); }
   if (encounter_id) { sql += ` AND v.encounter_id = $${index++}`;  params.push(encounter_id); }
   sql += ` ORDER BY v.recorded_at DESC LIMIT $${index++}`;
@@ -55,7 +56,7 @@ router.get('/', authMiddleware, async (req, res) => {
 // GET /api/vitals/:id
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
-    const row = await queryOne('SELECT * FROM vitals WHERE id = $1', [req.params.id]);
+    const row = await queryOne('SELECT * FROM vitals WHERE id = $1 AND hospital_id = $2', [req.params.id, req.user.hospitalId]);
     if (!row) return res.status(404).json({ error: 'Not found' });
     res.json(row);
   } catch (err) {
@@ -116,7 +117,7 @@ router.post('/',
     }
 
     try {
-      const patient = await queryOne('SELECT id FROM patients WHERE id = $1 AND is_active = 1', [patient_id]);
+      const patient = await queryOne('SELECT id FROM patients WHERE id = $1 AND hospital_id = $2 AND is_active = 1', [patient_id, req.user.hospitalId]);
       if (!patient) return res.status(404).json({ error: 'Patient not found' });
 
       const hospitalId = bodyHid || req.user.hospitalId || 'hsp-001';
@@ -160,11 +161,15 @@ router.post('/',
 
 // GET /api/vitals/patient/:id/trend — last N readings for charts
 router.get('/patient/:id/trend', authMiddleware, async (req, res) => {
+  const { hospitalId } = req.user;
   const n = Math.min(Math.max(parseInt(req.query.n) || 10, 1), 100);
   try {
+    const patient = await queryOne('SELECT id FROM patients WHERE id = $1 AND hospital_id = $2', [req.params.id, hospitalId]);
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+
     const rows = await query(
-      'SELECT * FROM vitals WHERE patient_id = $1 ORDER BY recorded_at DESC LIMIT $2',
-      [req.params.id, n]
+      'SELECT * FROM vitals WHERE patient_id = $1 AND hospital_id = $2 ORDER BY recorded_at DESC LIMIT $3',
+      [req.params.id, hospitalId, n]
     );
     res.json(rows.reverse());
   } catch (err) {

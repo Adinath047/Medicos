@@ -56,6 +56,9 @@ router.post('/',
 
     try {
       const hospitalId = req.user.hospitalId || 'hsp-001';
+      const patient = await queryOne('SELECT id FROM patients WHERE id = $1 AND hospital_id = $2 AND is_active = 1', [patient_id, hospitalId]);
+      if (!patient) return res.status(404).json({ error: 'Patient not found in this hospital' });
+
       const id = uuid();
       const invCountRow = await queryOne('SELECT COUNT(*) as n FROM billing WHERE hospital_id = $1', [hospitalId]);
       const invCount = invCountRow ? parseInt(invCountRow.n || 0) : 0;
@@ -95,8 +98,8 @@ router.put('/:id/payment',
     const { paid_amount, payment_mode } = req.body;
     
     try {
-      const bill = await queryOne('SELECT * FROM billing WHERE id = $1', [req.params.id]);
-      if (!bill) return res.status(404).json({ error: 'Not found' });
+      const bill = await queryOne('SELECT * FROM billing WHERE id = $1 AND hospital_id = $2', [req.params.id, req.user.hospitalId]);
+      if (!bill) return res.status(404).json({ error: 'Bill not found' });
 
       const payStatus = paid_amount >= bill.net_amount ? 'Paid' : paid_amount > 0 ? 'Partial' : 'Pending';
       await run(

@@ -87,6 +87,7 @@ export default function AppointmentsPage({ onNavigate, data }: { onNavigate:(p:s
     if (isNewPatient) {
       try {
         const pRes = await apiClient.post('/patients', newPatient);
+        await db.patients.put({ ...pRes.data, _syncStatus: 'synced' });
         finalPatientId = pRes.data.id;
         setPatients(p => [...p, pRes.data]);
       } catch (err) {
@@ -109,6 +110,7 @@ export default function AppointmentsPage({ onNavigate, data }: { onNavigate:(p:s
     const payload: any = { id, hospital_id: user?.hospitalId||'hsp-001', ...form, patient_id: finalPatientId, doctor_id: form.doctor_id||user?.id, status:'Scheduled', token_number: appts.length+1, created_at:now, updated_at:now };
     try {
       const r = await apiClient.post('/appointments', payload);
+      await db.appointments.put({ ...r.data, _syncStatus: 'synced' });
       setAppts(a=>[...a,r.data]);
     } catch (err) {
       const status = (err as any)?.response?.status;
@@ -126,8 +128,21 @@ export default function AppointmentsPage({ onNavigate, data }: { onNavigate:(p:s
   const filteredPatients = patients.filter(p => !patientSearch || p.name?.toLowerCase().includes(patientSearch.toLowerCase()) || p.phone?.includes(patientSearch) || p.uhid?.includes(patientSearch));
 
   async function updateStatus(id:string, status:string) {
-    try { const r = await apiClient.put(`/appointments/${id}/status`,{status}); setAppts(a=>a.map(x=>x.id===id?r.data:x)); }
-    catch { await db.appointments.update(id,{status,_syncStatus:'pending'}); setAppts(a=>a.map(x=>x.id===id?{...x,status}:x)); }
+    try { 
+      const r = await apiClient.put(`/appointments/${id}/status`,{status}); 
+      await db.appointments.put({ ...r.data, _syncStatus: 'synced' });
+      setAppts(a=>a.map(x=>x.id===id?r.data:x)); 
+    }
+    catch { 
+      const existing = appts.find(x => x.id === id);
+      if (existing) {
+        const payload = { ...existing, status, updated_at: new Date().toISOString() };
+        await markPending(db.appointments, payload, 'update');
+      } else {
+        await db.appointments.update(id,{status,_syncStatus:'pending'}); 
+      }
+      setAppts(a=>a.map(x=>x.id===id?{...x,status}:x)); 
+    }
   }
 
   const grouped = appts.reduce((acc:any,a:any)=>{ const k=a.doctor_name||'Doctor'; if(!acc[k])acc[k]=[]; acc[k].push(a); return acc; },{});
@@ -228,8 +243,10 @@ export default function AppointmentsPage({ onNavigate, data }: { onNavigate:(p:s
                                 Call Next / Encounter
                               </button>
                             )}
-                            {a.status !== 'Checked-In' && STATUS_FLOW[a.status] && (
-                              <button className="btn btn-secondary btn-sm" onClick={()=>updateStatus(a.id,STATUS_FLOW[a.status])}>→ {STATUS_FLOW[a.status]}</button>
+                            {STATUS_FLOW[a.status] && (
+                              <button className="btn btn-secondary btn-sm" onClick={()=>updateStatus(a.id,STATUS_FLOW[a.status])}>
+                                {a.status === 'Checked-In' ? 'Check-Out' : `→ ${STATUS_FLOW[a.status]}`}
+                              </button>
                             )}
                             {!['Cancelled','Completed'].includes(a.status)&&<button className="btn btn-ghost btn-sm" onClick={()=>updateStatus(a.id,'Cancelled')}>✕</button>}
                           </td>

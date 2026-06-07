@@ -1,4 +1,8 @@
 // server/server.js — Main Express server
+const dns = require('dns');
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
 require('dotenv').config();
 const express    = require('express');
 const cors       = require('cors');
@@ -28,12 +32,16 @@ app.use(cookieParser());
 
 // Restrict CORS
 app.use(cors({
-  origin: [
-    process.env.CLIENT_ORIGIN || '*',
-    process.env.NODE_ENV === 'development' ? 'http://localhost:5173' : null
-  ].filter(Boolean),
+  origin: (origin, callback) => {
+    // Allow local files (null origin), localhost, or process origin
+    if (!origin || origin === 'null' || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Fallback to accept other origins for dev testing
+    }
+  },
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization','X-CSRF-Token'],
+  allowedHeaders: ['Content-Type','Authorization','X-CSRF-Token','X-Super-Admin-Key'],
   credentials: true,
 }));
 
@@ -84,79 +92,113 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // ── API Routes ────────────────────────────────────────────────────────────
-app.use('/api/auth',          require('./routes/auth'));
-app.use('/api/users',         require('./routes/users'));
-app.use('/api/patients',      require('./routes/patients'));
-app.use('/api/encounters',    require('./routes/encounters'));
-app.use('/api/vitals',        require('./routes/vitals'));
-app.use('/api/prescriptions', require('./routes/prescriptions'));
-app.use('/api/appointments',  require('./routes/appointments'));
-app.use('/api/billing',       require('./routes/billing'));
-app.use('/api/pharmacy',      require('./routes/pharmacy'));
-app.use('/api/patient-uploads', require('./routes/patient_uploads'));
-app.use('/api/sync',          require('./routes/sync'));
+const serviceName = process.env.SERVICE_NAME || 'monolith';
+console.log(`[server] Service mode: ${serviceName.toUpperCase()}`);
 
-// ── Dashboard stats ───────────────────────────────────────────────────────
-app.get('/api/dashboard', require('./middleware/auth').authMiddleware, async (req, res) => {
-  const { query, queryOne } = require('./db/database');
-  const { hospitalId } = req.user;
-  const hid = hospitalId || 'hsp-001';
+const isMonolith = serviceName === 'monolith';
 
-  try {
-    const totalPatientsRow = await queryOne('SELECT COUNT(*) as n FROM patients WHERE hospital_id = $1 AND is_active = 1', [hid]);
-    const todayEncountersRow = await queryOne("SELECT COUNT(*) as n FROM encounters WHERE hospital_id = $1 AND created_at::date = CURRENT_DATE", [hid]);
-    const todayAppointmentsRow = await queryOne("SELECT COUNT(*) as n FROM appointments WHERE hospital_id = $1 AND date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') AND status != 'Cancelled'", [hid]);
-    const checkedInRow = await queryOne("SELECT COUNT(*) as n FROM appointments WHERE hospital_id = $1 AND date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') AND status = 'Checked-In'", [hid]);
-    const totalDoctorsRow = await queryOne("SELECT COUNT(*) as n FROM users WHERE hospital_id = $1 AND role = 'doctor' AND is_active = 1", [hid]);
-    const pendingBillingRow = await queryOne("SELECT COUNT(*) as n FROM billing WHERE hospital_id = $1 AND payment_status = 'Pending'", [hid]);
-    
-    const recentPatients = await query(
-      "SELECT id, name, uhid, age, sex, blood_group, phone, created_at FROM patients WHERE hospital_id = $1 AND is_active = 1 ORDER BY created_at DESC LIMIT 5",
-      [hid]
-    );
-    
-    const todayQueue = await query(
-      `SELECT a.*, p.name as patient_name, p.uhid, u.name as doctor_name
-       FROM appointments a
-       JOIN patients p ON a.patient_id = p.id
-       JOIN users u ON a.doctor_id = u.id
-       WHERE a.hospital_id = $1 AND a.date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') AND a.status NOT IN ('Cancelled','Completed')
-       ORDER BY a.token_number ASC LIMIT 10`,
-      [hid]
-    );
+if (isMonolith || serviceName === 'auth') {
+  app.use('/api/auth',          require('./routes/auth'));
+  app.use('/api/users',         require('./routes/users'));
+  app.use('/api/super-admin',   require('./routes/super_admin'));
+}
 
-    const stats = {
-      totalPatients:     totalPatientsRow ? parseInt(totalPatientsRow.n || 0) : 0,
-      todayEncounters:   todayEncountersRow ? parseInt(todayEncountersRow.n || 0) : 0,
-      todayAppointments: todayAppointmentsRow ? parseInt(todayAppointmentsRow.n || 0) : 0,
-      checkedIn:         checkedInRow ? parseInt(checkedInRow.n || 0) : 0,
-      totalDoctors:      totalDoctorsRow ? parseInt(totalDoctorsRow.n || 0) : 0,
-      pendingBilling:    pendingBillingRow ? parseInt(pendingBillingRow.n || 0) : 0,
-      recentPatients,
-      todayQueue,
-    };
+if (isMonolith || serviceName === 'clinical') {
+  app.use('/api/patients',      require('./routes/patients'));
+  app.use('/api/encounters',    require('./routes/encounters'));
+  app.use('/api/vitals',        require('./routes/vitals'));
+  app.use('/api/prescriptions', require('./routes/prescriptions'));
+  app.use('/api/appointments',  require('./routes/appointments'));
+  app.use('/api/beds',          require('./routes/beds'));
+  app.use('/api/notifications', require('./routes/notifications'));
 
-    res.json(stats);
-  } catch (err) {
-    console.error('Error fetching dashboard stats:', err);
-    res.status(500).json({ error: 'Failed to load dashboard stats' });
-  }
-});
+  // ── Dashboard stats ───────────────────────────────────────────────────────
+  app.get('/api/dashboard', require('./middleware/auth').authMiddleware, async (req, res) => {
+    const { query, queryOne } = require('./db/database');
+    const { hospitalId } = req.user;
+    const hid = hospitalId || 'hsp-001';
+
+    try {
+      const totalPatientsRow = await queryOne('SELECT COUNT(*) as n FROM patients WHERE hospital_id = $1 AND is_active = 1', [hid]);
+      const todayEncountersRow = await queryOne("SELECT COUNT(*) as n FROM encounters WHERE hospital_id = $1 AND created_at::date = CURRENT_DATE", [hid]);
+      const todayAppointmentsRow = await queryOne("SELECT COUNT(*) as n FROM appointments WHERE hospital_id = $1 AND date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') AND status != 'Cancelled'", [hid]);
+      const checkedInRow = await queryOne("SELECT COUNT(*) as n FROM appointments WHERE hospital_id = $1 AND date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') AND status = 'Checked-In'", [hid]);
+      const totalDoctorsRow = await queryOne("SELECT COUNT(*) as n FROM users WHERE hospital_id = $1 AND role = 'doctor' AND is_active = 1", [hid]);
+      const pendingBillingRow = await queryOne("SELECT COUNT(*) as n FROM billing WHERE hospital_id = $1 AND payment_status = 'Pending'", [hid]);
+      
+      const recentPatients = await query(
+        "SELECT id, name, uhid, age, sex, blood_group, phone, created_at FROM patients WHERE hospital_id = $1 AND is_active = 1 ORDER BY created_at DESC LIMIT 5",
+        [hid]
+      );
+      
+      const todayQueue = await query(
+        `SELECT a.*, p.name as patient_name, p.uhid, u.name as doctor_name
+         FROM appointments a
+         JOIN patients p ON a.patient_id = p.id
+         JOIN users u ON a.doctor_id = u.id
+         WHERE a.hospital_id = $1 AND a.date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') AND a.status NOT IN ('Cancelled','Completed')
+         ORDER BY a.token_number ASC LIMIT 10`,
+        [hid]
+      );
+
+      const stats = {
+        totalPatients:     totalPatientsRow ? parseInt(totalPatientsRow.n || 0) : 0,
+        todayEncounters:   todayEncountersRow ? parseInt(todayEncountersRow.n || 0) : 0,
+        todayAppointments: todayAppointmentsRow ? parseInt(todayAppointmentsRow.n || 0) : 0,
+        checkedIn:         checkedInRow ? parseInt(checkedInRow.n || 0) : 0,
+        totalDoctors:      totalDoctorsRow ? parseInt(totalDoctorsRow.n || 0) : 0,
+        pendingBilling:    pendingBillingRow ? parseInt(pendingBillingRow.n || 0) : 0,
+        recentPatients,
+        todayQueue,
+      };
+
+      res.json(stats);
+    } catch (err) {
+      console.error('Error fetching dashboard stats:', err);
+      res.status(500).json({ error: 'Failed to load dashboard stats' });
+    }
+  });
+}
+
+if (isMonolith || serviceName === 'billing') {
+  app.use('/api/billing',       require('./routes/billing'));
+  app.use('/api/pharmacy',      require('./routes/pharmacy'));
+  app.use('/api/patient-uploads', require('./routes/patient_uploads'));
+}
+
+if (isMonolith || serviceName === 'sync') {
+  app.use('/api/sync',          require('./routes/sync'));
+}
 
 // ── Health check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString(), version: '1.0.1' });
+  res.json({ status: 'ok', time: new Date().toISOString(), version: '1.0.1', service: serviceName });
 });
 
-app.get('/api/auth/debug-users', async (req, res) => {
-  try {
-    const { query } = require('./db/database');
-    const users = await query('SELECT id, email, is_active, role FROM users');
-    res.json({ count: users.length, users });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+if (isMonolith || serviceName === 'auth') {
+  app.get('/api/auth/debug-users', async (req, res) => {
+    try {
+      const { query } = require('./db/database');
+      const users = await query('SELECT id, email, is_active, role FROM users');
+      res.json({ count: users.length, users });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Serve Standalone Super Admin Dashboard
+  app.use('/super-admin', (req, res, next) => {
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self';"
+    );
+    next();
+  });
+  app.use('/super-admin', express.static(path.join(__dirname, 'public/super-admin')));
+  app.get('/super-admin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public/super-admin/index.html'));
+  });
+}
 
 // ── Serve React build (production) ────────────────────────────────────────
 const clientBuild = path.join(__dirname, '../client/dist');
@@ -174,6 +216,155 @@ app.use((err, req, res, _next) => {
   console.error('❌ Server error:', err.message);
   res.status(500).json({ error: 'Internal server error', detail: process.env.NODE_ENV !== 'production' ? err.message : undefined });
 });
+
+// ── Run DB Migrations ──────────────────────────────────────────────────────
+(async () => {
+  const { run, queryOne } = require('./db/database');
+  try {
+    console.log('[db] Running startup database migrations...');
+    
+    // Create delta-sync composite and single-column indexes on pg
+    console.log('[db] Creating database indexes...');
+    await run(`CREATE INDEX IF NOT EXISTS idx_patients_hospital ON patients(hospital_id);`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_patients_updated_at ON patients(updated_at);`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_patients_hsp_updated ON patients(hospital_id, updated_at);`);
+
+    await run(`CREATE INDEX IF NOT EXISTS idx_encounters_hospital ON encounters(hospital_id);`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_encounters_updated_at ON encounters(updated_at);`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_encounters_hsp_updated ON encounters(hospital_id, updated_at);`);
+
+    await run(`CREATE INDEX IF NOT EXISTS idx_vitals_hospital ON vitals(hospital_id);`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_vitals_recorded_at ON vitals(recorded_at);`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_vitals_hsp_recorded ON vitals(hospital_id, recorded_at);`);
+
+    await run(`CREATE INDEX IF NOT EXISTS idx_prescriptions_hospital ON prescriptions(hospital_id);`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_prescriptions_created_at ON prescriptions(created_at);`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_prescriptions_hsp_created ON prescriptions(hospital_id, created_at);`);
+
+    await run(`CREATE INDEX IF NOT EXISTS idx_appointments_hospital ON appointments(hospital_id);`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_appointments_updated_at ON appointments(updated_at);`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_appointments_hsp_updated ON appointments(hospital_id, updated_at);`);
+
+    await run(`CREATE INDEX IF NOT EXISTS idx_billing_hospital ON billing(hospital_id);`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_billing_created_at ON billing(created_at);`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_billing_hsp_created ON billing(hospital_id, created_at);`);
+
+    await run(`CREATE INDEX IF NOT EXISTS idx_medicines_hospital ON medicines(hospital_id);`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_medicines_updated_at ON medicines(updated_at);`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_medicines_hsp_updated ON medicines(hospital_id, updated_at);`);
+
+    // Define the trigger function for updated_at auto-updates
+    console.log('[db] Configuring automatic updated_at triggers...');
+    await run(`
+      CREATE OR REPLACE FUNCTION update_updated_at_column()
+      RETURNS TRIGGER AS $$
+      BEGIN
+         NEW.updated_at = now()::text;
+         RETURN NEW;
+      END;
+      $$ language 'plpgsql';
+    `);
+
+    // Define helper to safely drop/create BEFORE UPDATE triggers
+    const setupTrigger = async (tableName) => {
+      await run(`DROP TRIGGER IF EXISTS trg_${tableName}_updated_at ON ${tableName};`);
+      await run(`
+        CREATE TRIGGER trg_${tableName}_updated_at
+        BEFORE UPDATE ON ${tableName}
+        FOR EACH ROW
+        EXECUTE FUNCTION update_updated_at_column();
+      `);
+    };
+
+    // Apply triggers on tables that have updated_at column
+    await setupTrigger('users');
+    await setupTrigger('hospitals');
+    await setupTrigger('patients');
+    await setupTrigger('encounters');
+    await setupTrigger('appointments');
+    await setupTrigger('medicines');
+
+    await run(`ALTER TABLE users ADD COLUMN IF NOT EXISTS letterhead TEXT;`);
+    await run(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id          TEXT PRIMARY KEY,
+        hospital_id TEXT NOT NULL,
+        doctor_id   TEXT NOT NULL,
+        patient_id  TEXT,
+        message     TEXT NOT NULL,
+        is_read     INTEGER NOT NULL DEFAULT 0,
+        created_at  TEXT NOT NULL DEFAULT (now()::text)
+      );
+    `);
+
+    // Create medicines table
+    await run(`
+      CREATE TABLE IF NOT EXISTS medicines (
+        id           TEXT PRIMARY KEY,
+        hospital_id  TEXT NOT NULL,
+        name         TEXT NOT NULL,
+        generics     TEXT DEFAULT '[]',
+        strengths    TEXT DEFAULT '[]',
+        default_dose TEXT,
+        category     TEXT,
+        is_active    INTEGER NOT NULL DEFAULT 1,
+        created_at   TEXT NOT NULL DEFAULT (now()::text),
+        updated_at   TEXT NOT NULL DEFAULT (now()::text)
+      );
+    `);
+
+    // Seed medicines if empty
+    const countRes = await queryOne('SELECT COUNT(*) as n FROM medicines');
+    if (countRes && parseInt(countRes.n || 0) === 0) {
+      console.log('[db] Seeding medicines from client medicines.ts...');
+      const fs = require('fs');
+      const path = require('path');
+      try {
+        const tsPath = path.join(__dirname, '../client/src/utils/medicines.ts');
+        if (fs.existsSync(tsPath)) {
+          const tsContent = fs.readFileSync(tsPath, 'utf8');
+          const startMarker = 'export const MEDICINES: Medicine[] = ';
+          const endMarker = ';\n\n// All common brand names';
+          const startIdx = tsContent.indexOf(startMarker);
+          const endIdx = tsContent.indexOf(endMarker);
+          if (startIdx !== -1 && endIdx !== -1) {
+            const jsonStr = tsContent.substring(startIdx + startMarker.length, endIdx);
+            const medicines = JSON.parse(jsonStr);
+            console.log(`[db] Found ${medicines.length} medicines in medicines.ts. Seeding...`);
+            
+            const { v4: uuid } = require('uuid');
+            for (const med of medicines) {
+              await run(
+                `INSERT INTO medicines (id, hospital_id, name, generics, strengths, default_dose, category)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [
+                  uuid(),
+                  'hsp-001',
+                  med.name,
+                  JSON.stringify(med.generics),
+                  JSON.stringify(med.strengths),
+                  med.defaultDose || null,
+                  med.category || null
+                ]
+              );
+            }
+            console.log('[db] Medicines seeded successfully!');
+          } else {
+            console.warn('[db] Could not find MEDICINES array markers in medicines.ts');
+          }
+        } else {
+          console.warn('[db] medicines.ts file not found at:', tsPath);
+        }
+      } catch (err) {
+        console.error('[db] Error seeding medicines:', err.message);
+      }
+    }
+
+    console.log('[db] Database migrations executed successfully.');
+  } catch (err) {
+    console.error('[db] Error running database migrations on startup:', err.message);
+  }
+})();
 
 // ── Start ─────────────────────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {

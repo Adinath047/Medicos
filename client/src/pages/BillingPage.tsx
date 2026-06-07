@@ -25,6 +25,42 @@ export default function BillingPage({ onNavigate }: { onNavigate:(p:string,d?:an
   const [notes, setNotes]       = useState('');
   const [saving, setSaving]     = useState(false);
   const [filter, setFilter]     = useState('All');
+  
+  // Record Payment modal state
+  const [recordPaymentBill, setRecordPaymentBill] = useState<any>(null);
+  const [newPaidAmount, setNewPaidAmount] = useState('');
+  const [newPayMode, setNewPayMode] = useState('Cash');
+  const [submittingPayment, setSubmittingPayment] = useState(false);
+
+  async function handleRecordPaymentSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!recordPaymentBill) return;
+    
+    const amt = parseFloat(newPaidAmount || '0');
+    if (isNaN(amt) || amt <= 0) {
+      alert('Please enter a valid payment amount.');
+      return;
+    }
+    
+    setSubmittingPayment(true);
+    const cumulativePaid = (recordPaymentBill.paid_amount || 0) + amt;
+    
+    try {
+      const res = await apiClient.put(`/billing/${recordPaymentBill.id}/payment`, {
+        paid_amount: cumulativePaid,
+        payment_mode: newPayMode,
+      });
+      
+      // Update local bills list
+      setBills(prev => prev.map(b => b.id === recordPaymentBill.id ? res.data : b));
+      setRecordPaymentBill(null);
+      alert('Payment recorded successfully.');
+    } catch (err: any) {
+      alert(err?.response?.data?.error || 'Failed to record payment.');
+    } finally {
+      setSubmittingPayment(false);
+    }
+  }
   const [doctorInfo, setDoctorInfo] = useState<any>(null);  // auto-filled from encounter
   const [fetchingDoctor, setFetchingDoctor] = useState(false);
 
@@ -95,7 +131,11 @@ export default function BillingPage({ onNavigate }: { onNavigate:(p:string,d?:an
       bill_type: 'consultation',
       doctor_id: doctorInfo?.id || null,
     };
-    try { const r=await apiClient.post('/billing',payload); setBills(b=>[r.data,...b]); }
+    try {
+      const r = await apiClient.post('/billing', payload);
+      await db.billing.put({ ...r.data, _syncStatus: 'synced' });
+      setBills(b => [r.data, ...b]);
+    }
     catch { await markPending(db.billing,payload,'create'); await db.billing.put(payload); setBills(b=>[payload,...b]); }
     finally {
       setSaving(false); setShowAdd(false);
@@ -214,6 +254,64 @@ export default function BillingPage({ onNavigate }: { onNavigate:(p:string,d?:an
         </div>
       )}
 
+      {recordPaymentBill && (
+        <div className="modal-overlay" onClick={() => setRecordPaymentBill(null)}>
+          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">Record Payment</div>
+              <button className="modal-close" onClick={() => setRecordPaymentBill(null)}>✕</button>
+            </div>
+            <form onSubmit={handleRecordPaymentSubmit}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ background: 'var(--surface-alt)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>INVOICE #{recordPaymentBill.invoice_number || recordPaymentBill.id.slice(0,8)}</div>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>Patient: {recordPaymentBill.patient_name || '—'}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 10, fontSize: 12 }}>
+                    <div>Net Total: <strong>₹{recordPaymentBill.net_amount}</strong></div>
+                    <div>Paid: <strong style={{ color: 'var(--success)' }}>₹{recordPaymentBill.paid_amount || 0}</strong></div>
+                    <div>Due: <strong style={{ color: 'var(--danger)' }}>₹{recordPaymentBill.net_amount - (recordPaymentBill.paid_amount || 0)}</strong></div>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">New Payment Amount (₹) *</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min="1"
+                    max={recordPaymentBill.net_amount - (recordPaymentBill.paid_amount || 0)}
+                    placeholder="Enter collected amount"
+                    value={newPaidAmount}
+                    onChange={e => setNewPaidAmount(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Payment Mode *</label>
+                  <select
+                    className="input"
+                    value={newPayMode}
+                    onChange={e => setNewPayMode(e.target.value)}
+                    required
+                  >
+                    {PAY_MODES.map(mode => (
+                      <option key={mode} value={mode}>{mode}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-ghost" onClick={() => setRecordPaymentBill(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={submittingPayment}>
+                  {submittingPayment ? 'Saving...' : 'Record Payment'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <div className="page-header">
         <div className="page-title">🏥 Billing</div>
         <button className="btn btn-primary" onClick={()=>setShowAdd(true)}>+ New Invoice</button>
@@ -248,7 +346,22 @@ export default function BillingPage({ onNavigate }: { onNavigate:(p:string,d?:an
                         <td><span className={`badge ${STATUS_COLOR[b.payment_status]||'badge-neutral'}`}>{b.payment_status}</span></td>
                         <td style={{fontSize:11,color:'var(--text-muted)'}}>{new Date(b.created_at).toLocaleDateString('en-IN')}</td>
                         <td>
-                          <button className="btn btn-ghost btn-sm" onClick={() => handlePrint(b)} title="Print Invoice">🖨️</button>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            {['Pending', 'Partial'].includes(b.payment_status) && (
+                              <button
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: '2px 8px', fontSize: 11, minHeight: 'auto' }}
+                                onClick={() => {
+                                  setRecordPaymentBill(b);
+                                  setNewPaidAmount((b.net_amount - (b.paid_amount || 0)).toFixed(0));
+                                  setNewPayMode(b.payment_mode || 'Cash');
+                                }}
+                              >
+                                Record Payment
+                              </button>
+                            )}
+                            <button className="btn btn-ghost btn-sm" onClick={() => handlePrint(b)} title="Print Invoice">🖨️</button>
+                          </div>
                         </td>
                       </tr>
                     ))}

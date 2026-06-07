@@ -45,10 +45,17 @@ router.get('/', authMiddleware, async (req, res) => {
     params.push(hid); 
   }
   
-  // Doctor Privacy: only see own patients unless searching
-  if (role === 'doctor' && !q) {
-    sql += ` AND primary_doctor_id = $${index++}`;
+  // Doctor Privacy: only see treated patients
+  if (role === 'doctor') {
+    sql += ` AND (
+      primary_doctor_id = $${index} OR
+      registered_by = $${index} OR
+      id IN (SELECT patient_id FROM appointments WHERE doctor_id = $${index}) OR
+      id IN (SELECT patient_id FROM encounters WHERE doctor_id = $${index}) OR
+      id IN (SELECT patient_id FROM prescriptions WHERE doctor_id = $${index})
+    )`;
     params.push(req.user.id);
+    index++;
   }
 
   if (q)   {
@@ -72,9 +79,16 @@ router.get('/', authMiddleware, async (req, res) => {
       countSql += ` AND hospital_id = $${countIndex++}`;
       countParams.push(hid);
     }
-    if (role === 'doctor' && !q) {
-      countSql += ` AND primary_doctor_id = $${countIndex++}`;
+    if (role === 'doctor') {
+      countSql += ` AND (
+        primary_doctor_id = $${countIndex} OR
+        registered_by = $${countIndex} OR
+        id IN (SELECT patient_id FROM appointments WHERE doctor_id = $${countIndex}) OR
+        id IN (SELECT patient_id FROM encounters WHERE doctor_id = $${countIndex}) OR
+        id IN (SELECT patient_id FROM prescriptions WHERE doctor_id = $${countIndex})
+      )`;
       countParams.push(req.user.id);
+      countIndex++;
     }
     
     const totalRow = await queryOne(countSql, countParams);
@@ -88,9 +102,29 @@ router.get('/', authMiddleware, async (req, res) => {
 
 // GET /api/patients/:id
 router.get('/:id', authMiddleware, async (req, res) => {
+  const { hospitalId, role } = req.user;
   try {
-    const row = await queryOne('SELECT * FROM patients WHERE id = $1 AND is_active = 1', [req.params.id]);
+    const row = await queryOne('SELECT * FROM patients WHERE id = $1 AND hospital_id = $2 AND is_active = 1', [req.params.id, hospitalId]);
     if (!row) return res.status(404).json({ error: 'Patient not found' });
+    
+    // Doctor Privacy: check if doctor has treated the patient
+    if (role === 'doctor') {
+      const treated = await queryOne(
+        `SELECT 1 FROM patients p
+         WHERE p.id = $1 AND (
+           p.primary_doctor_id = $2 OR
+           p.registered_by = $2 OR
+           EXISTS (SELECT 1 FROM appointments WHERE patient_id = $1 AND doctor_id = $2) OR
+           EXISTS (SELECT 1 FROM encounters WHERE patient_id = $1 AND doctor_id = $2) OR
+           EXISTS (SELECT 1 FROM prescriptions WHERE patient_id = $1 AND doctor_id = $2)
+         )`,
+        [req.params.id, req.user.id]
+      );
+      if (!treated) {
+        return res.status(403).json({ error: 'Access Denied: You have not treated this patient' });
+      }
+    }
+
     res.json(parsePatient(row));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -198,7 +232,7 @@ router.put('/:id',
   }),
   async (req, res) => {
     try {
-      const existing = await queryOne('SELECT id FROM patients WHERE id = $1 AND is_active = 1', [req.params.id]);
+      const existing = await queryOne('SELECT id FROM patients WHERE id = $1 AND hospital_id = $2 AND is_active = 1', [req.params.id, req.user.hospitalId]);
       if (!existing) return res.status(404).json({ error: 'Patient not found' });
 
       const {
@@ -252,7 +286,7 @@ router.put('/:id',
 // DELETE /api/patients/:id (soft delete)
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    const existing = await queryOne('SELECT id FROM patients WHERE id = $1 AND is_active = 1', [req.params.id]);
+    const existing = await queryOne('SELECT id FROM patients WHERE id = $1 AND hospital_id = $2 AND is_active = 1', [req.params.id, req.user.hospitalId]);
     if (!existing) return res.status(404).json({ error: 'Patient not found' });
     await run("UPDATE patients SET is_active = 0, updated_at = now()::text WHERE id = $1", [req.params.id]);
     auditLog(req.user.id, 'DELETE_PATIENT', 'patients', req.params.id, {}, ip(req));
@@ -264,9 +298,28 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
 // GET /api/patients/:id/summary — encounters + vitals + prescriptions
 router.get('/:id/summary', authMiddleware, async (req, res) => {
+  const { hospitalId, role } = req.user;
   try {
-    const patient = await queryOne('SELECT * FROM patients WHERE id = $1', [req.params.id]);
+    const patient = await queryOne('SELECT * FROM patients WHERE id = $1 AND hospital_id = $2', [req.params.id, hospitalId]);
     if (!patient) return res.status(404).json({ error: 'Not found' });
+
+    // Doctor Privacy: check if doctor has treated the patient
+    if (role === 'doctor') {
+      const treated = await queryOne(
+        `SELECT 1 FROM patients p
+         WHERE p.id = $1 AND (
+           p.primary_doctor_id = $2 OR
+           p.registered_by = $2 OR
+           EXISTS (SELECT 1 FROM appointments WHERE patient_id = $1 AND doctor_id = $2) OR
+           EXISTS (SELECT 1 FROM encounters WHERE patient_id = $1 AND doctor_id = $2) OR
+           EXISTS (SELECT 1 FROM prescriptions WHERE patient_id = $1 AND doctor_id = $2)
+         )`,
+        [req.params.id, req.user.id]
+      );
+      if (!treated) {
+        return res.status(403).json({ error: 'Access Denied: You have not treated this patient' });
+      }
+    }
 
     const encounters    = await query('SELECT * FROM encounters WHERE patient_id = $1 ORDER BY created_at DESC LIMIT 20', [req.params.id]);
     const latestVitals  = await queryOne('SELECT * FROM vitals WHERE patient_id = $1 ORDER BY recorded_at DESC LIMIT 1', [req.params.id]);

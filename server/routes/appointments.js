@@ -97,10 +97,10 @@ router.post('/',
 
     try {
       // Verify patient and doctor exist
-      const patient = await queryOne('SELECT id FROM patients WHERE id = $1 AND is_active = 1', [patient_id]);
+      const patient = await queryOne('SELECT id FROM patients WHERE id = $1 AND hospital_id = $2 AND is_active = 1', [patient_id, req.user.hospitalId]);
       if (!patient) return res.status(404).json({ error: 'Patient not found' });
 
-      const doctor = await queryOne("SELECT id FROM users WHERE id = $1 AND role = 'doctor' AND is_active = 1", [doctor_id]);
+      const doctor = await queryOne("SELECT id FROM users WHERE id = $1 AND hospital_id = $2 AND role = 'doctor' AND is_active = 1", [doctor_id, req.user.hospitalId]);
       if (!doctor) return res.status(404).json({ error: 'Doctor not found' });
 
       // Prevent duplicate booking at exact same slot
@@ -146,7 +146,7 @@ router.put('/:id/status',
     const { status } = req.body;
 
     try {
-      const appt = await queryOne('SELECT id, status FROM appointments WHERE id = $1', [req.params.id]);
+      const appt = await queryOne('SELECT id, status FROM appointments WHERE id = $1 AND hospital_id = $2', [req.params.id, req.user.hospitalId]);
       if (!appt) return res.status(404).json({ error: 'Appointment not found' });
 
       // Prevent reactivating a cancelled appointment
@@ -170,7 +170,7 @@ router.put('/:id/status',
 // DELETE /api/appointments/:id
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    const appt = await queryOne('SELECT id FROM appointments WHERE id = $1', [req.params.id]);
+    const appt = await queryOne('SELECT id FROM appointments WHERE id = $1 AND hospital_id = $2', [req.params.id, req.user.hospitalId]);
     if (!appt) return res.status(404).json({ error: 'Appointment not found' });
     await run("UPDATE appointments SET status = 'Cancelled', updated_at = now()::text WHERE id = $1", [req.params.id]);
     auditLog(req.user.id, 'CANCEL_APPOINTMENT', 'appointments', req.params.id, {}, ip(req));

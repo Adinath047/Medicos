@@ -7,7 +7,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      workbox: { globPatterns: ['**/*.{js,css,html,ico,png,svg}'] },
+      workbox: { 
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        navigateFallbackDenylist: [/^\/super-admin/, /^\/api/]
+      },
       manifest: {
         name: 'Medicos EMR',
         short_name: 'MedicosEMR',

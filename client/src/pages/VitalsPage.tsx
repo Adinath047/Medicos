@@ -125,9 +125,10 @@ export default function VitalsPage({ onNavigate, data, mode }: { onNavigate:(p:s
       recorded_at: now,
     };
     try {
-      await apiClient.post('/vitals', payload);
+      const res = await apiClient.post('/vitals', payload);
+      await db.vitals.put({ ...res.data, _syncStatus: 'synced' });
       setSuccess('Vitals recorded ✓');
-      setHistory(h => [...h, payload]);
+      setHistory(h => [...h, res.data]);
     } catch (err) {
       const status = (err as any)?.response?.status;
       if (status === 422) {

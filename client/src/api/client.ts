@@ -43,7 +43,10 @@ apiClient.interceptors.response.use(
   err => {
     if (err.response?.status === 401) {
       localStorage.removeItem('emr_token');
-      window.dispatchEvent(new Event('emr:logout'));
+      const url = err.config?.url || '';
+      if (!url.endsWith('/auth/logout') && !url.endsWith('/auth/me')) {
+        window.dispatchEvent(new Event('emr:logout'));
+      }
     }
     return Promise.reject(err);
   }

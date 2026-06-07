@@ -1,7 +1,7 @@
 // server/routes/auth.js
 const router = require('express').Router();
 const supabase = require('../utils/supabase');
-const { queryOne, run, auditLog } = require('../db/database');
+const { query, queryOne, run, auditLog } = require('../db/database');
 const { authMiddleware } = require('../middleware/auth');
 const v = require('../middleware/validate');
 
@@ -27,7 +27,7 @@ router.post('/login',
       }
 
       const user = await queryOne(
-        'SELECT id, name, email, role, staff_type, hospital_id, photo_url, is_active FROM users WHERE id = $1',
+        'SELECT id, name, email, role, staff_type, hospital_id, photo_url, is_active, specialization, license_number, consultation_fee, followup_fee, letterhead FROM users WHERE id = $1',
         [data.user.id]
       );
       
@@ -47,6 +47,11 @@ router.post('/login',
         staff_type: user.staff_type || 'front_desk',
         hospitalId: user.hospital_id,
         photoUrl:   user.photo_url || null,
+        specialization: user.specialization || null,
+        licenseNumber: user.license_number || null,
+        consultationFee: parseFloat(user.consultation_fee) || 0,
+        followupFee: parseFloat(user.followup_fee) || 0,
+        letterhead: user.letterhead || null,
       };
 
       auditLog(user.id, 'LOGIN_SUCCESS', 'users', user.id, { email, role: user.role }, ip(req));
@@ -73,9 +78,15 @@ router.post('/login',
 );
 
 // POST /api/auth/logout
-router.post('/logout', authMiddleware, async (req, res) => {
+router.post('/logout', async (req, res) => {
   try {
-    auditLog(req.user.id, 'LOGOUT', 'users', req.user.id, {}, ip(req));
+    const token = req.cookies?.emr_token;
+    if (token) {
+      const { data: { user: authUser } } = await supabase.auth.getUser(token);
+      if (authUser) {
+        auditLog(authUser.id, 'LOGOUT', 'users', authUser.id, {}, ip(req));
+      }
+    }
     await supabase.auth.signOut();
   } catch (err) {
     console.error('[auth/logout] error:', err.message);
@@ -88,6 +99,25 @@ router.post('/logout', authMiddleware, async (req, res) => {
 // GET /api/auth/me — verify current token
 router.get('/me', authMiddleware, async (req, res) => {
   res.json({ user: req.user });
+});
+
+// GET /api/auth/hospital/:code/staff — public endpoint for hospital staff dropdowns
+router.get('/hospital/:code/staff', async (req, res) => {
+  const code = req.params.code.trim();
+  try {
+    const hospital = await queryOne('SELECT id, name FROM hospitals WHERE id = $1 AND is_active = 1', [code]);
+    if (!hospital) {
+      return res.status(404).json({ error: 'Hospital not found' });
+    }
+    const staff = await query(
+      `SELECT id, name, email, role FROM users WHERE hospital_id = $1 AND is_active = 1 ORDER BY name`,
+      [code]
+    );
+    res.json({ hospital, staff });
+  } catch (err) {
+    console.error('[auth/hospital/staff] error:', err);
+    res.status(500).json({ error: 'Failed to retrieve hospital staff' });
+  }
 });
 
 // POST /api/auth/register (admin-only, called during onboarding or staff creation)

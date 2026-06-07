@@ -1,13 +1,13 @@
 -- =====================================================================
 --  MEDICOS EMR — Supabase (Postgres) Schema
---  Run this once in Supabase SQL Editor
+--  Run this once in Supabase SQL Editor or via apply-schema.js
 -- =====================================================================
 
 -- ── HOSPITALS ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS hospitals (
   id           TEXT PRIMARY KEY,
   name         TEXT NOT NULL,
-  type         TEXT DEFAULT 'General',
+  type         TEXT DEFAULT 'General',   -- General | Specialty | Teaching | Clinic
   address      TEXT,
   city         TEXT,
   state        TEXT,
@@ -20,22 +20,27 @@ CREATE TABLE IF NOT EXISTS hospitals (
   updated_at   TEXT NOT NULL DEFAULT (now()::text)
 );
 
--- ── USERS ─────────────────────────────────────────────────────────────
+-- ── USERS (Hospital Staff / Practitioners) ──────────────────────────
 CREATE TABLE IF NOT EXISTS users (
   id               TEXT PRIMARY KEY,
   name             TEXT NOT NULL,
   email            TEXT UNIQUE NOT NULL,
   password         TEXT NOT NULL,
-  role             TEXT NOT NULL DEFAULT 'doctor',
+  role             TEXT NOT NULL DEFAULT 'doctor',  -- admin | doctor | nurse | receptionist | billing | lab_technician | pharmacist
   hospital_id      TEXT,
   staff_id         TEXT,
   phone            TEXT,
-  specialization   TEXT,
-  license_number   TEXT,
+  specialization   TEXT,   -- e.g. Cardiology, General Medicine
+  license_number   TEXT,   -- Medical Council registration number
+  letterhead       TEXT,   -- Custom letterhead text
   photo_url        TEXT,
   is_active        INTEGER NOT NULL DEFAULT 1,
+  staff_type       TEXT DEFAULT 'front_desk',       -- front_desk | pharmacy
+  consultation_fee NUMERIC DEFAULT 0,
+  followup_fee     NUMERIC DEFAULT 0,
   created_at       TEXT NOT NULL DEFAULT (now()::text),
-  updated_at       TEXT NOT NULL DEFAULT (now()::text)
+  updated_at       TEXT NOT NULL DEFAULT (now()::text),
+  CONSTRAINT fk_users_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE SET NULL
 );
 
 -- ── PATIENTS ──────────────────────────────────────────────────────────
@@ -46,18 +51,19 @@ CREATE TABLE IF NOT EXISTS patients (
   name                    TEXT NOT NULL,
   dob                     TEXT,
   age                     INTEGER,
-  sex                     TEXT NOT NULL DEFAULT 'Male',
+  sex                     TEXT NOT NULL DEFAULT 'Male', -- Male | Female | Other
   blood_group             TEXT,
   phone                   TEXT,
+  phone_hash              TEXT,                         -- HMAC fingerprint for searchable fields
   email                   TEXT,
   password                TEXT,
   address                 TEXT,
   weight                  TEXT,
   height                  TEXT,
-  allergies               TEXT DEFAULT '[]',
-  chronic_conditions      TEXT DEFAULT '[]',
-  current_medications     TEXT DEFAULT '[]',
-  ec_name                 TEXT,
+  allergies               TEXT DEFAULT '[]',            -- JSON array
+  chronic_conditions      TEXT DEFAULT '[]',            -- JSON array
+  current_medications     TEXT DEFAULT '[]',            -- JSON array
+  ec_name                 TEXT,                         -- Emergency contact name
   ec_phone                TEXT,
   ec_relation             TEXT,
   govt_id_type            TEXT,
@@ -70,36 +76,53 @@ CREATE TABLE IF NOT EXISTS patients (
   is_active               INTEGER NOT NULL DEFAULT 1,
   registered_by           TEXT,
   created_at              TEXT NOT NULL DEFAULT (now()::text),
-  updated_at              TEXT NOT NULL DEFAULT (now()::text)
+  updated_at              TEXT NOT NULL DEFAULT (now()::text),
+  CONSTRAINT fk_patients_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE,
+  CONSTRAINT fk_patients_doctor FOREIGN KEY (primary_doctor_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- ── ENCOUNTERS ────────────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_patients_hospital ON patients(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_patients_uhid ON patients(uhid);
+CREATE INDEX IF NOT EXISTS idx_patients_name ON patients(name);
+CREATE INDEX IF NOT EXISTS idx_patients_phone ON patients(phone);
+
+-- ── ENCOUNTERS (OPD visits, emergency, follow-up) ──────────────────────
 CREATE TABLE IF NOT EXISTS encounters (
   id               TEXT PRIMARY KEY,
   hospital_id      TEXT NOT NULL,
   patient_id       TEXT NOT NULL,
   doctor_id        TEXT NOT NULL,
-  encounter_type   TEXT NOT NULL DEFAULT 'OPD',
+  encounter_type   TEXT NOT NULL DEFAULT 'OPD',  -- OPD | Emergency | Follow-up | IPD | Tele
   token_number     INTEGER,
   appointment_id   TEXT,
-  status           TEXT NOT NULL DEFAULT 'Active',
+  status           TEXT NOT NULL DEFAULT 'Active', -- Active | Completed | Cancelled
+  -- SOAP Notes
   chief_complaint  TEXT,
   history          TEXT,
   past_history     TEXT,
   examination      TEXT,
-  diagnosis        TEXT DEFAULT '[]',
+  -- Diagnosis
+  diagnosis        TEXT DEFAULT '[]',            -- JSON array: [{ code, name, type }]
   impression       TEXT,
+  -- Plan
   plan             TEXT,
   advice           TEXT,
   follow_up_date   TEXT,
   refer_to         TEXT,
+  -- Metadata
   duration_mins    INTEGER,
   billing_amount   REAL,
   notes            TEXT,
-  doctor_name      TEXT,
   created_at       TEXT NOT NULL DEFAULT (now()::text),
-  updated_at       TEXT NOT NULL DEFAULT (now()::text)
+  updated_at       TEXT NOT NULL DEFAULT (now()::text),
+  CONSTRAINT fk_encounters_patient FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  CONSTRAINT fk_encounters_doctor FOREIGN KEY (doctor_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_encounters_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_encounters_patient ON encounters(patient_id);
+CREATE INDEX IF NOT EXISTS idx_encounters_doctor ON encounters(doctor_id);
+CREATE INDEX IF NOT EXISTS idx_encounters_hospital ON encounters(hospital_id);
 
 -- ── VITALS ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS vitals (
@@ -120,31 +143,64 @@ CREATE TABLE IF NOT EXISTS vitals (
   bmi              REAL,
   respiratory_rate INTEGER,
   blood_sugar      REAL,
-  blood_sugar_type TEXT,
-  pain_score       INTEGER,
+  blood_sugar_type TEXT,   -- fasting | random | post-meal
+  pain_score       INTEGER, -- 0-10
   notes            TEXT,
   recorded_by      TEXT NOT NULL,
-  recorded_at      TEXT NOT NULL DEFAULT (now()::text)
+  recorded_at      TEXT NOT NULL DEFAULT (now()::text),
+  CONSTRAINT fk_vitals_patient FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  CONSTRAINT fk_vitals_encounter FOREIGN KEY (encounter_id) REFERENCES encounters(id) ON DELETE SET NULL,
+  CONSTRAINT fk_vitals_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_vitals_patient ON vitals(patient_id);
+CREATE INDEX IF NOT EXISTS idx_vitals_encounter ON vitals(encounter_id);
 
 -- ── PRESCRIPTIONS ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS prescriptions (
-  id               TEXT PRIMARY KEY,
-  hospital_id      TEXT NOT NULL,
-  patient_id       TEXT NOT NULL,
-  doctor_id        TEXT NOT NULL,
-  encounter_id     TEXT,
-  medicines        TEXT NOT NULL DEFAULT '[]',
-  advice           TEXT,
-  follow_up_date   TEXT,
-  patient_weight   TEXT,
-  slip_token       TEXT UNIQUE,
-  is_printed       INTEGER DEFAULT 0,
-  created_by_role  TEXT DEFAULT 'doctor',
-  created_at       TEXT NOT NULL DEFAULT (now()::text)
+  id              TEXT PRIMARY KEY,
+  hospital_id     TEXT NOT NULL,
+  patient_id      TEXT NOT NULL,
+  doctor_id       TEXT NOT NULL,
+  encounter_id    TEXT,
+  medicines       TEXT NOT NULL DEFAULT '[]',   -- JSON array of medicine objects
+  advice          TEXT,
+  follow_up_date  TEXT,
+  patient_weight  TEXT,
+  slip_token      TEXT UNIQUE,                  -- Shareable token
+  is_printed      INTEGER DEFAULT 0,
+  created_by_role TEXT DEFAULT 'doctor',
+  created_at      TEXT NOT NULL DEFAULT (now()::text),
+  CONSTRAINT fk_prescriptions_patient FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  CONSTRAINT fk_prescriptions_doctor FOREIGN KEY (doctor_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_prescriptions_encounter FOREIGN KEY (encounter_id) REFERENCES encounters(id) ON DELETE SET NULL,
+  CONSTRAINT fk_prescriptions_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
 );
 
--- ── PATIENT UPLOADS ───────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_prescriptions_patient ON prescriptions(patient_id);
+CREATE INDEX IF NOT EXISTS idx_prescriptions_doctor ON prescriptions(doctor_id);
+CREATE INDEX IF NOT EXISTS idx_prescriptions_encounter ON prescriptions(encounter_id);
+
+-- ── LAB ORDERS ────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS lab_orders (
+  id            TEXT PRIMARY KEY,
+  hospital_id   TEXT NOT NULL,
+  patient_id    TEXT NOT NULL,
+  doctor_id     TEXT NOT NULL,
+  encounter_id  TEXT,
+  tests         TEXT NOT NULL DEFAULT '[]',     -- JSON: [{ name, code, urgency }]
+  status        TEXT NOT NULL DEFAULT 'Ordered',-- Ordered | Sample Collected | Processing | Completed
+  results       TEXT DEFAULT '[]',              -- JSON: [{ test, value, unit, reference, flag }]
+  result_notes  TEXT,
+  ordered_at    TEXT NOT NULL DEFAULT (now()::text),
+  completed_at  TEXT,
+  CONSTRAINT fk_lab_orders_patient FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  CONSTRAINT fk_lab_orders_doctor FOREIGN KEY (doctor_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_lab_orders_encounter FOREIGN KEY (encounter_id) REFERENCES encounters(id) ON DELETE SET NULL,
+  CONSTRAINT fk_lab_orders_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
+);
+
+-- ── PATIENT UPLOADS (Scans, external files, reports) ───────────────────
 CREATE TABLE IF NOT EXISTS patient_uploads (
   id            TEXT PRIMARY KEY,
   patient_id    TEXT NOT NULL,
@@ -153,8 +209,12 @@ CREATE TABLE IF NOT EXISTS patient_uploads (
   file_url      TEXT NOT NULL,
   file_type     TEXT,
   notes         TEXT,
-  uploaded_at   TEXT NOT NULL DEFAULT (now()::text)
+  uploaded_at   TEXT NOT NULL DEFAULT (now()::text),
+  CONSTRAINT fk_uploads_patient FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  CONSTRAINT fk_uploads_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_uploads_patient ON patient_uploads(patient_id);
 
 -- ── APPOINTMENTS ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS appointments (
@@ -166,60 +226,107 @@ CREATE TABLE IF NOT EXISTS appointments (
   time             TEXT NOT NULL,
   token_number     INTEGER,
   reason           TEXT,
-  status           TEXT NOT NULL DEFAULT 'Scheduled',
+  status           TEXT NOT NULL DEFAULT 'Scheduled', -- Scheduled | Confirmed | Checked-In | Completed | Cancelled
   notes            TEXT,
   booked_by        TEXT,
-  patient_name     TEXT,
-  doctor_name      TEXT,
   created_at       TEXT NOT NULL DEFAULT (now()::text),
-  updated_at       TEXT NOT NULL DEFAULT (now()::text)
+  updated_at       TEXT NOT NULL DEFAULT (now()::text),
+  CONSTRAINT fk_appointments_patient FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  CONSTRAINT fk_appointments_doctor FOREIGN KEY (doctor_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_appointments_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
 );
 
--- ── BILLING ──────────────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_appt_date ON appointments(date);
+CREATE INDEX IF NOT EXISTS idx_appt_patient ON appointments(patient_id);
+CREATE INDEX IF NOT EXISTS idx_appt_doctor ON appointments(doctor_id);
+
+-- ── BEDS / WARDS (IPD management) ─────────────────────────────────────
+CREATE TABLE IF NOT EXISTS beds (
+  id           TEXT PRIMARY KEY,
+  hospital_id  TEXT NOT NULL,
+  bed_number   TEXT NOT NULL,
+  ward         TEXT NOT NULL,
+  room         TEXT,
+  type         TEXT DEFAULT 'General',         -- General | Private | Semi-Private | ICU
+  status       TEXT NOT NULL DEFAULT 'Available', -- Available | Occupied | Maintenance
+  patient_id   TEXT,
+  doctor_id    TEXT,
+  admitted_at  TEXT,
+  CONSTRAINT fk_beds_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE,
+  CONSTRAINT fk_beds_patient FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE SET NULL,
+  CONSTRAINT fk_beds_doctor FOREIGN KEY (doctor_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- ── BILLING (OPD / consultation billing) ──────────────────────────────
 CREATE TABLE IF NOT EXISTS billing (
   id             TEXT PRIMARY KEY,
   hospital_id    TEXT NOT NULL,
   patient_id     TEXT NOT NULL,
   encounter_id   TEXT,
-  items          TEXT NOT NULL DEFAULT '[]',
+  items          TEXT NOT NULL DEFAULT '[]',    -- JSON array
   total_amount   REAL NOT NULL DEFAULT 0,
   discount       REAL DEFAULT 0,
   net_amount     REAL NOT NULL DEFAULT 0,
   paid_amount    REAL DEFAULT 0,
-  payment_mode   TEXT DEFAULT 'Cash',
-  payment_status TEXT NOT NULL DEFAULT 'Pending',
+  payment_mode   TEXT DEFAULT 'Cash',           -- Cash | Card | UPI | Insurance
+  payment_status TEXT NOT NULL DEFAULT 'Pending',-- Pending | Partial | Paid | Waived
   invoice_number TEXT UNIQUE,
   notes          TEXT,
   billed_by      TEXT,
-  patient_name   TEXT,
-  created_at     TEXT NOT NULL DEFAULT (now()::text)
+  created_at     TEXT NOT NULL DEFAULT (now()::text),
+  CONSTRAINT fk_billing_patient FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  CONSTRAINT fk_billing_encounter FOREIGN KEY (encounter_id) REFERENCES encounters(id) ON DELETE SET NULL,
+  CONSTRAINT fk_billing_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
 );
 
--- ── SEED DATA ─────────────────────────────────────────────────────────
-INSERT INTO hospitals (id, name, type, city, phone)
-  VALUES ('hsp-001', 'Medicos General Hospital', 'General', 'Mumbai', '+91-22-12345678')
-  ON CONFLICT (id) DO NOTHING;
+-- ── PHARMACY BILLS ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS pharmacy_bills (
+  id              TEXT PRIMARY KEY,
+  hospital_id     TEXT NOT NULL,
+  patient_id      TEXT NOT NULL,
+  prescription_id TEXT,
+  pharmacist_id   TEXT NOT NULL,
+  medicines       TEXT NOT NULL DEFAULT '[]',   -- JSON array
+  total_amount    REAL NOT NULL DEFAULT 0,
+  discount        REAL DEFAULT 0,
+  net_amount      REAL NOT NULL DEFAULT 0,
+  paid_amount     REAL DEFAULT 0,
+  payment_mode    TEXT DEFAULT 'Cash',
+  payment_status  TEXT NOT NULL DEFAULT 'Pending',
+  invoice_number  TEXT UNIQUE,
+  notes           TEXT,
+  created_at      TEXT NOT NULL DEFAULT (now()::text),
+  updated_at      TEXT NOT NULL DEFAULT (now()::text),
+  CONSTRAINT fk_pharmacy_patient FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pharmacy_pharmacist FOREIGN KEY (pharmacist_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pharmacy_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
+);
 
--- Admin password: Admin@123
-INSERT INTO users (id, name, email, password, role, hospital_id)
-  VALUES ('usr-admin-001', 'System Admin', 'admin@medicos.local',
-    '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin', 'hsp-001')
-  ON CONFLICT (id) DO NOTHING;
+-- ── AUDIT LOG ─────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS audit_log (
+  id            SERIAL PRIMARY KEY,
+  user_id       TEXT NOT NULL,
+  action        TEXT NOT NULL,
+  table_name    TEXT,
+  record_id     TEXT,
+  details       TEXT,
+  ip_address    TEXT,
+  previous_hash TEXT,
+  hash          TEXT,
+  created_at    TEXT NOT NULL DEFAULT (now()::text)
+);
 
--- Doctor password: Doctor@123
-INSERT INTO users (id, name, email, password, role, hospital_id)
-  VALUES ('usr-doc-001', 'Dr. Priya Sharma', 'dr.sharma@medicos.local',
-    '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'doctor', 'hsp-001')
-  ON CONFLICT (id) DO NOTHING;
+-- ── EMERGENCY NOTIFICATIONS ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS notifications (
+  id          TEXT PRIMARY KEY,
+  hospital_id TEXT NOT NULL,
+  doctor_id   TEXT NOT NULL,
+  patient_id  TEXT,
+  message     TEXT NOT NULL,
+  is_read     INTEGER NOT NULL DEFAULT 0, -- 0 = Unread, 1 = Read/Resolved
+  created_at  TEXT NOT NULL DEFAULT (now()::text),
+  CONSTRAINT fk_notif_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE,
+  CONSTRAINT fk_notif_doctor FOREIGN KEY (doctor_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_notif_patient FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE SET NULL
+);
 
--- Receptionist password: Recept@123
-INSERT INTO users (id, name, email, password, role, hospital_id)
-  VALUES ('usr-rcpt-001', 'Anita Patel', 'reception@medicos.local',
-    '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'receptionist', 'hsp-001')
-  ON CONFLICT (id) DO NOTHING;
-
--- Sample patient
-INSERT INTO patients (id, uhid, hospital_id, name, age, sex, blood_group, phone, allergies, chronic_conditions, registered_by)
-  VALUES ('pat-001', 'UHID-001-000001', 'hsp-001', 'Rahul Mehta', 34, 'Male', 'B+',
-    '+91-9876543210', '["Penicillin"]', '["Hypertension", "Type 2 Diabetes"]', 'usr-rcpt-001')
-  ON CONFLICT (id) DO NOTHING;

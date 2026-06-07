@@ -28,6 +28,49 @@ router.get('/doctors', authMiddleware, async (req, res) => {
   }
 });
 
+// PATCH /api/users/me/profile — update own profile details
+router.patch('/me/profile',
+  authMiddleware,
+  v.body({
+    name:             [v.str(2, 100)],
+    phone:            [v.phone],
+    specialization:   [v.str(0, 100)],
+    license_number:   [v.str(0, 100)],
+    consultation_fee: [v.float(0, 99999)],
+    followup_fee:     [v.float(0, 99999)],
+    letterhead:       [v.str(0, 5000000)],
+  }),
+  async (req, res) => {
+    const { name, specialization, phone, license_number, consultation_fee, followup_fee, letterhead } = req.body;
+    try {
+      const user = await queryOne('SELECT * FROM users WHERE id = $1', [req.user.id]);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      await run(
+        `UPDATE users SET name=$1, specialization=$2, phone=$3, license_number=$4,
+                          consultation_fee=$5, followup_fee=$6, letterhead=$7,
+                          updated_at=now()::text
+         WHERE id=$8`,
+        [
+          name ?? user.name,
+          specialization ?? user.specialization,
+          phone ?? user.phone,
+          license_number ?? user.license_number,
+          consultation_fee !== undefined ? parseFloat(consultation_fee) : user.consultation_fee,
+          followup_fee !== undefined ? parseFloat(followup_fee) : user.followup_fee,
+          letterhead ?? user.letterhead,
+          req.user.id
+        ]
+      );
+      
+      auditLog(req.user.id, 'UPDATE_PROFILE', 'users', req.user.id, { name, specialization }, ip(req));
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
 // GET /api/users — list all staff
 router.get('/', ...adminOnly, async (req, res) => {
   try {

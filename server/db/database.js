@@ -18,6 +18,23 @@ const pool = new Pool({
     : { rejectUnauthorized: false }
 });
 
+// Prevent unhandled error events from crashing the server on network drops/idle timeouts
+pool.on('error', (err) => {
+  console.error('[db] Unexpected error on idle database client:', err.message);
+});
+
+// Verify connection on startup
+(async () => {
+  try {
+    const client = await pool.connect();
+    const res = await client.query('SELECT NOW()');
+    console.log(`[db] PostgreSQL connection verified successfully! Server time: ${res.rows[0].now}`);
+    client.release();
+  } catch (err) {
+    console.error('[db] CRITICAL: Database connection verification failed during startup:', err.message);
+  }
+})();
+
 /** SELECT returning many rows */
 async function query(sql, params = []) {
   const { rows } = await pool.query(sql, params);
