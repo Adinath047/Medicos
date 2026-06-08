@@ -39,6 +39,25 @@ export async function syncNow(): Promise<void> {
 
   if (!isOnline || currentState === 'syncing') return;
 
+  // Clean up any legacy encrypted local records
+  const encryptedCount = await db.patients.filter(p => !!p.phone && p.phone.includes(':')).count();
+  if (encryptedCount > 0) {
+    const pending = await getPendingCount();
+    if (pending === 0) {
+      console.warn('[sync] Encrypted patient records found in local DB. Clearing cache to force full decrypted re-sync.');
+      await db.transaction('rw', [db.patients, db.encounters, db.vitals, db.prescriptions, db.appointments, db.billing, db.medicines, db.meta], async () => {
+        await db.patients.clear();
+        await db.encounters.clear();
+        await db.vitals.clear();
+        await db.prescriptions.clear();
+        await db.appointments.clear();
+        await db.billing.clear();
+        await db.medicines.clear();
+        await db.meta.delete('lastSync');
+      });
+    }
+  }
+
   const pending = await getPendingCount();
   if (pending === 0) {
     // Still do a pull to get server changes
