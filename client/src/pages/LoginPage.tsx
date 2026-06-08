@@ -46,6 +46,11 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await apiClient.get(`/auth/hospital/${codeToVerify.trim()}/staff`);
+      
+      if (!res.data || !res.data.hospital || !Array.isArray(res.data.staff)) {
+        throw new Error('Invalid response format from server');
+      }
+
       setHospitalName(res.data.hospital.name);
       setStaff(res.data.staff);
       setStep('auth');

@@ -5,9 +5,22 @@ import axios from 'axios';
 
 const _env = (import.meta as any).env ?? {};
 const isDev = _env.DEV === true || _env.MODE === 'development';
-const SERVER_URL = isDev
-  ? (_env.VITE_API_URL || 'http://localhost:4000/api')
-  : '/api';  // Same origin in production (Railway serves both)
+
+const getBaseURL = () => {
+  if (_env.VITE_API_URL) return _env.VITE_API_URL;
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:4000/api';
+    }
+    if (hostname.includes('vercel.app')) {
+      return 'https://reliable-dedication-production-ad01.up.railway.app/api';
+    }
+  }
+  return '/api';
+};
+
+const SERVER_URL = getBaseURL();
 
 export const apiClient = axios.create({
   baseURL: SERVER_URL,
