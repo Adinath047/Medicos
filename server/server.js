@@ -92,115 +92,97 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // ── API Routes ────────────────────────────────────────────────────────────
-const serviceName = process.env.SERVICE_NAME || 'monolith';
-console.log(`[server] Service mode: ${serviceName.toUpperCase()}`);
+app.use('/api/auth',          require('./routes/auth'));
+app.use('/api/users',         require('./routes/users'));
+app.use('/api/super-admin',   require('./routes/super_admin'));
+app.use('/api/patients',      require('./routes/patients'));
+app.use('/api/encounters',    require('./routes/encounters'));
+app.use('/api/vitals',        require('./routes/vitals'));
+app.use('/api/prescriptions', require('./routes/prescriptions'));
+app.use('/api/appointments',  require('./routes/appointments'));
+app.use('/api/beds',          require('./routes/beds'));
+app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/billing',       require('./routes/billing'));
+app.use('/api/pharmacy',      require('./routes/pharmacy'));
+app.use('/api/patient-uploads', require('./routes/patient_uploads'));
+app.use('/api/sync',          require('./routes/sync'));
 
-const isMonolith = serviceName === 'monolith';
+// ── Dashboard stats ───────────────────────────────────────────────────────
+app.get('/api/dashboard', require('./middleware/auth').authMiddleware, async (req, res) => {
+  const { query, queryOne } = require('./db/database');
+  const { hospitalId } = req.user;
+  const hid = hospitalId || 'hsp-001';
 
-if (isMonolith || serviceName === 'auth') {
-  app.use('/api/auth',          require('./routes/auth'));
-  app.use('/api/users',         require('./routes/users'));
-  app.use('/api/super-admin',   require('./routes/super_admin'));
-}
+  try {
+    const totalPatientsRow = await queryOne('SELECT COUNT(*) as n FROM patients WHERE hospital_id = $1 AND is_active = 1', [hid]);
+    const todayEncountersRow = await queryOne("SELECT COUNT(*) as n FROM encounters WHERE hospital_id = $1 AND created_at::date = CURRENT_DATE", [hid]);
+    const todayAppointmentsRow = await queryOne("SELECT COUNT(*) as n FROM appointments WHERE hospital_id = $1 AND date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') AND status != 'Cancelled'", [hid]);
+    const checkedInRow = await queryOne("SELECT COUNT(*) as n FROM appointments WHERE hospital_id = $1 AND date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') AND status = 'Checked-In'", [hid]);
+    const totalDoctorsRow = await queryOne("SELECT COUNT(*) as n FROM users WHERE hospital_id = $1 AND role = 'doctor' AND is_active = 1", [hid]);
+    const pendingBillingRow = await queryOne("SELECT COUNT(*) as n FROM billing WHERE hospital_id = $1 AND payment_status = 'Pending'", [hid]);
+    
+    const { decryptFields } = require('./utils/crypto');
+    const recentPatientsRaw = await query(
+      "SELECT id, name, uhid, age, sex, blood_group, phone, created_at FROM patients WHERE hospital_id = $1 AND is_active = 1 ORDER BY created_at DESC LIMIT 5",
+      [hid]
+    );
+    const recentPatients = recentPatientsRaw.map(p => decryptFields(p, ['phone']));
+    
+    const todayQueue = await query(
+      `SELECT a.*, p.name as patient_name, p.uhid, u.name as doctor_name
+       FROM appointments a
+       JOIN patients p ON a.patient_id = p.id
+       JOIN users u ON a.doctor_id = u.id
+       WHERE a.hospital_id = $1 AND a.date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') AND a.status NOT IN ('Cancelled','Completed')
+       ORDER BY a.token_number ASC LIMIT 10`,
+      [hid]
+    );
 
-if (isMonolith || serviceName === 'clinical') {
-  app.use('/api/patients',      require('./routes/patients'));
-  app.use('/api/encounters',    require('./routes/encounters'));
-  app.use('/api/vitals',        require('./routes/vitals'));
-  app.use('/api/prescriptions', require('./routes/prescriptions'));
-  app.use('/api/appointments',  require('./routes/appointments'));
-  app.use('/api/beds',          require('./routes/beds'));
-  app.use('/api/notifications', require('./routes/notifications'));
+    const stats = {
+      totalPatients:     totalPatientsRow ? parseInt(totalPatientsRow.n || 0) : 0,
+      todayEncounters:   todayEncountersRow ? parseInt(todayEncountersRow.n || 0) : 0,
+      todayAppointments: todayAppointmentsRow ? parseInt(todayAppointmentsRow.n || 0) : 0,
+      checkedIn:         checkedInRow ? parseInt(checkedInRow.n || 0) : 0,
+      totalDoctors:      totalDoctorsRow ? parseInt(totalDoctorsRow.n || 0) : 0,
+      pendingBilling:    pendingBillingRow ? parseInt(pendingBillingRow.n || 0) : 0,
+      recentPatients,
+      todayQueue,
+    };
 
-  // ── Dashboard stats ───────────────────────────────────────────────────────
-  app.get('/api/dashboard', require('./middleware/auth').authMiddleware, async (req, res) => {
-    const { query, queryOne } = require('./db/database');
-    const { hospitalId } = req.user;
-    const hid = hospitalId || 'hsp-001';
-
-    try {
-      const totalPatientsRow = await queryOne('SELECT COUNT(*) as n FROM patients WHERE hospital_id = $1 AND is_active = 1', [hid]);
-      const todayEncountersRow = await queryOne("SELECT COUNT(*) as n FROM encounters WHERE hospital_id = $1 AND created_at::date = CURRENT_DATE", [hid]);
-      const todayAppointmentsRow = await queryOne("SELECT COUNT(*) as n FROM appointments WHERE hospital_id = $1 AND date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') AND status != 'Cancelled'", [hid]);
-      const checkedInRow = await queryOne("SELECT COUNT(*) as n FROM appointments WHERE hospital_id = $1 AND date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') AND status = 'Checked-In'", [hid]);
-      const totalDoctorsRow = await queryOne("SELECT COUNT(*) as n FROM users WHERE hospital_id = $1 AND role = 'doctor' AND is_active = 1", [hid]);
-      const pendingBillingRow = await queryOne("SELECT COUNT(*) as n FROM billing WHERE hospital_id = $1 AND payment_status = 'Pending'", [hid]);
-      
-      const { decryptFields } = require('./utils/crypto');
-      const recentPatientsRaw = await query(
-        "SELECT id, name, uhid, age, sex, blood_group, phone, created_at FROM patients WHERE hospital_id = $1 AND is_active = 1 ORDER BY created_at DESC LIMIT 5",
-        [hid]
-      );
-      const recentPatients = recentPatientsRaw.map(p => decryptFields(p, ['phone']));
-      
-      const todayQueue = await query(
-        `SELECT a.*, p.name as patient_name, p.uhid, u.name as doctor_name
-         FROM appointments a
-         JOIN patients p ON a.patient_id = p.id
-         JOIN users u ON a.doctor_id = u.id
-         WHERE a.hospital_id = $1 AND a.date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') AND a.status NOT IN ('Cancelled','Completed')
-         ORDER BY a.token_number ASC LIMIT 10`,
-        [hid]
-      );
-
-      const stats = {
-        totalPatients:     totalPatientsRow ? parseInt(totalPatientsRow.n || 0) : 0,
-        todayEncounters:   todayEncountersRow ? parseInt(todayEncountersRow.n || 0) : 0,
-        todayAppointments: todayAppointmentsRow ? parseInt(todayAppointmentsRow.n || 0) : 0,
-        checkedIn:         checkedInRow ? parseInt(checkedInRow.n || 0) : 0,
-        totalDoctors:      totalDoctorsRow ? parseInt(totalDoctorsRow.n || 0) : 0,
-        pendingBilling:    pendingBillingRow ? parseInt(pendingBillingRow.n || 0) : 0,
-        recentPatients,
-        todayQueue,
-      };
-
-      res.json(stats);
-    } catch (err) {
-      console.error('Error fetching dashboard stats:', err);
-      res.status(500).json({ error: 'Failed to load dashboard stats' });
-    }
-  });
-}
-
-if (isMonolith || serviceName === 'billing') {
-  app.use('/api/billing',       require('./routes/billing'));
-  app.use('/api/pharmacy',      require('./routes/pharmacy'));
-  app.use('/api/patient-uploads', require('./routes/patient_uploads'));
-}
-
-if (isMonolith || serviceName === 'sync') {
-  app.use('/api/sync',          require('./routes/sync'));
-}
+    res.json(stats);
+  } catch (err) {
+    console.error('Error fetching dashboard stats:', err);
+    res.status(500).json({ error: 'Failed to load dashboard stats' });
+  }
+});
 
 // ── Health check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString(), version: '1.0.1', service: serviceName });
+  res.json({ status: 'ok', time: new Date().toISOString(), version: '1.0.1', service: 'monolith' });
 });
 
-if (isMonolith || serviceName === 'auth') {
-  app.get('/api/auth/debug-users', async (req, res) => {
-    try {
-      const { query } = require('./db/database');
-      const users = await query('SELECT id, email, is_active, role FROM users');
-      res.json({ count: users.length, users });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
+app.get('/api/auth/debug-users', async (req, res) => {
+  try {
+    const { query } = require('./db/database');
+    const users = await query('SELECT id, email, is_active, role FROM users');
+    res.json({ count: users.length, users });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  // Serve Standalone Super Admin Dashboard
-  app.use('/super-admin', (req, res, next) => {
-    res.setHeader(
-      "Content-Security-Policy",
-      "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self';"
-    );
-    next();
-  });
-  app.use('/super-admin', express.static(path.join(__dirname, 'public/super-admin')));
-  app.get('/super-admin', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public/super-admin/index.html'));
-  });
-}
+// Serve Standalone Super Admin Dashboard
+app.use('/super-admin', (req, res, next) => {
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self';"
+  );
+  next();
+});
+app.use('/super-admin', express.static(path.join(__dirname, 'public/super-admin')));
+app.get('/super-admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/super-admin/index.html'));
+});
 
 // ── Serve React build (production) ────────────────────────────────────────
 const clientBuild = path.join(__dirname, '../client/dist');
