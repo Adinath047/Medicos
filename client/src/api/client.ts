@@ -14,7 +14,7 @@ const getBaseURL = () => {
       return 'http://localhost:4000/api';
     }
     if (hostname.includes('vercel.app')) {
-      return 'https://reliable-dedication-production-ad01.up.railway.app/api';
+      return 'https://content-playfulness-production-a6c3.up.railway.app/api';
     }
   }
   return '/api';
