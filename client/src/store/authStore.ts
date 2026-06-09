@@ -32,12 +32,14 @@ export const useAuthStore = create<AuthState>((set) => ({
       const res = await apiClient.get('/auth/me');
       const { user } = res.data;
       localStorage.setItem('emr_user', JSON.stringify(user));
-      set({ user, token: 'cookie-auth', isLoading: false });
+      const savedToken = localStorage.getItem('emr_token') || 'cookie-auth';
+      set({ user, token: savedToken, isLoading: false });
       
       // Trigger sync immediately on session restore
       import('../sync/syncManager').then(m => m.syncNow()).catch(console.error);
     } catch (err) {
       localStorage.removeItem('emr_user');
+      localStorage.removeItem('emr_token');
       set({ user: null, token: null, isLoading: false });
     }
   },
@@ -45,9 +47,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (email, password) => {
     try {
       const res = await apiClient.post('/auth/login', { email, password });
-      const { user } = res.data;
+      const { user, token } = res.data;
+      localStorage.setItem('emr_token', token);
       localStorage.setItem('emr_user', JSON.stringify(user));
-      set({ user, token: 'cookie-auth' });
+      set({ user, token });
       
       // Trigger sync immediately on login
       import('../sync/syncManager').then(m => m.syncNow()).catch(console.error);
@@ -64,6 +67,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       apiClient.post('/auth/logout').catch(() => { /* ignore */ });
     }
     localStorage.removeItem('emr_user');
+    localStorage.removeItem('emr_token');
     set({ user: null, token: null });
   },
 }));

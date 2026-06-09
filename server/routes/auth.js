@@ -58,8 +58,8 @@ router.post('/login',
       
       // Set cookie using Supabase session access token
       const cookieOpts = {
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: true,
+        sameSite: 'none',
         maxAge: data.session.expires_in * 1000
       };
       
@@ -69,7 +69,7 @@ router.post('/login',
       res.cookie('emr_token', data.session.access_token, { ...cookieOpts, httpOnly: true });
       res.cookie('csrf_token', csrfToken, { ...cookieOpts, httpOnly: false });
 
-      res.json({ user: payload, expiresIn: data.session.expires_in });
+      res.json({ user: payload, token: data.session.access_token, expiresIn: data.session.expires_in });
     } catch (err) {
       console.error('[auth/login] error:', err);
       res.status(500).json({ error: 'Internal server error during login' });
