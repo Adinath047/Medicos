@@ -42,9 +42,9 @@ apiClient.interceptors.request.use(config => {
   const csrf = getCookie('csrf_token');
   if (csrf) config.headers['X-CSRF-Token'] = csrf;
   
-  // Keep fallback for mobile/offline if needed
+  // Keep fallback for mobile/offline/cross-site
   const localToken = localStorage.getItem('emr_token');
-  if (localToken && !config.headers.Authorization) {
+  if (localToken) {
     config.headers.Authorization = `Bearer ${localToken}`;
   }
   return config;
