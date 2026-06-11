@@ -7,10 +7,12 @@ const { queryOne } = require('../db/database');
  */
 async function authMiddleware(req, res, next) {
   const header = req.headers['authorization'];
-  let token = req.cookies?.emr_token;
+  let token = null;
   
-  if (!token && header) {
+  if (header) {
     token = header.startsWith('Bearer ') ? header.slice(7) : header;
+  } else {
+    token = req.cookies?.emr_token;
   }
   
   if (!token) return res.status(401).json({ error: 'No token provided' });
