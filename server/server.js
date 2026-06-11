@@ -16,7 +16,7 @@ const app  = express();
 const PORT = process.env.PORT || 4000;
 
 // ── Security & compression ─────────────────────────────────────────────────
-app.set('trust proxy', 1); // Trust first proxy (Railway/Render) to get correct req.ip
+app.set('trust proxy', 1); // Trust first proxy (e.g. Nginx, Load Balancer, Render) to get correct req.ip
 
 // Disable X-Powered-By header (Helmet handles this, but good to be explicit)
 app.disable('x-powered-by');

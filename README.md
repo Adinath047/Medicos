@@ -106,20 +106,5 @@ Medicos/
     └── routes/             # API endpoints (Auth, Sync, etc.)
 \`\`\`
 
----
-
-## 🌐 Deployment (Railway)
-
-This project is configured to be deployed easily on **Railway**.
-
-1. Connect your GitHub repository to Railway.
-2. Railway will automatically detect the Node.js backend in the \`server/\` folder if you configure the root directory or build commands appropriately.
-3. Ensure you add the \`SUPABASE_URL\`, \`SUPABASE_KEY\`, and \`JWT_SECRET\` to the Railway Environment Variables.
-4. Set the Start Command to \`node server/index.js\`.
-
-*(Alternatively, the frontend can be deployed to Vercel/Netlify while the backend is hosted on Render/Railway).*
-
----
-
 ## 📄 License
 This project is proprietary and confidential. Unauthorized copying, distribution, or use is strictly prohibited.

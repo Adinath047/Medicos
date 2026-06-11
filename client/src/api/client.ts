@@ -13,9 +13,6 @@ const getBaseURL = () => {
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       return 'http://localhost:4000/api';
     }
-    if (hostname.includes('vercel.app')) {
-      return 'https://content-playfulness-production-a6c3.up.railway.app/api';
-    }
   }
   return '/api';
 };
