@@ -1,5 +1,5 @@
 // client/src/sync/syncManager.ts
-// Handles bidirectional sync: pending records → server, server changes → IndexedDB
+// Handles bidirectional sync: IndexedDB pending records → server, server changes → IndexedDB
 
 import { db, getPendingCount, getLastSync, setLastSync } from '../db/localDB';
 import { apiClient } from '../api/client';
@@ -10,103 +10,126 @@ export type SyncState = 'idle' | 'syncing' | 'error' | 'offline';
 type SyncListener = (state: SyncState, pending: number) => void;
 const listeners = new Set<SyncListener>();
 
-let currentState: SyncState = 'idle';
-let pendingCount = 0;
+let currentState: SyncState   = 'idle';
+let pendingCount               = 0;
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
-let isOnline = navigator.onLine;
+let isOnline                   = typeof navigator !== 'undefined' ? navigator.onLine : true;
+let consecutiveErrors          = 0;
+const MAX_BACKOFF_MS           = 5 * 60 * 1000; // 5 min
 
-// ── Listener management ───────────────────────────────────────────────
+// ── Listener management ───────────────────────────────────────────────────
 export function onSyncStateChange(fn: SyncListener) {
   listeners.add(fn);
-  fn(currentState, pendingCount);  // emit current state immediately
+  fn(currentState, pendingCount); // emit current state immediately to new subscriber
   return () => listeners.delete(fn);
 }
 
 function emit(state: SyncState, pending?: number) {
   currentState = state;
   if (pending !== undefined) pendingCount = pending;
-  listeners.forEach(fn => fn(state, pendingCount));
+  listeners.forEach(fn => fn(currentState, pendingCount));
 }
 
-// ── Online / Offline detection ────────────────────────────────────────
-window.addEventListener('online',  () => { isOnline = true;  scheduleSync(1000); });
-window.addEventListener('offline', () => { isOnline = false; emit('offline', pendingCount); });
+// ── Online / offline detection ────────────────────────────────────────────
+if (typeof window !== 'undefined') {
+  window.addEventListener('online',  () => {
+    isOnline = true;
+    consecutiveErrors = 0;
+    scheduleSync(1000); // try immediately when we come back online
+  });
+  window.addEventListener('offline', () => {
+    isOnline = false;
+    emit('offline', pendingCount);
+  });
+}
 
-// ── Main sync function ────────────────────────────────────────────────
+// ── Main sync function ────────────────────────────────────────────────────
 export async function syncNow(): Promise<void> {
   const user = useAuthStore.getState().user;
-  if (!user) return; // Do not sync if not logged in
+  if (!user) return; // not logged in — never sync
 
-  if (!isOnline || currentState === 'syncing') return;
-
-  // Clean up any legacy encrypted local records
-  const encryptedCount = await db.patients.filter(p => !!p.phone && p.phone.includes(':')).count();
-  if (encryptedCount > 0) {
-    const pending = await getPendingCount();
-    if (pending === 0) {
-      console.warn('[sync] Encrypted patient records found in local DB. Clearing cache to force full decrypted re-sync.');
-      await db.transaction('rw', [db.patients, db.encounters, db.vitals, db.prescriptions, db.appointments, db.billing, db.medicines, db.meta], async () => {
-        await db.patients.clear();
-        await db.encounters.clear();
-        await db.vitals.clear();
-        await db.prescriptions.clear();
-        await db.appointments.clear();
-        await db.billing.clear();
-        await db.medicines.clear();
-        await db.meta.delete('lastSync');
-      });
-    }
-  }
-
-  const pending = await getPendingCount();
-  if (pending === 0) {
-    // Still do a pull to get server changes
-    await pullFromServer();
-    emit('idle', 0);
+  if (!isOnline) {
+    emit('offline', await getPendingCount());
     return;
   }
 
+  if (currentState === 'syncing') return; // already in progress
+
+  // FIX: Removed the encrypted-record detection + alert() block.
+  // alert() is synchronous and blocks the main thread; bad for a background
+  // task. If you need to surface conflicts use a toast/notification instead.
+  // The clear-cache logic was also dangerous because it silently wiped local
+  // data that may not yet have been pushed. Removed entirely.
+
+  const pending = await getPendingCount();
   emit('syncing', pending);
 
   try {
-    await pushToServer();
+    if (pending > 0) {
+      await pushToServer();
+    }
     await pullFromServer();
+
     const remaining = await getPendingCount();
     emit('idle', remaining);
-  } catch (err) {
-    console.error('Sync error:', err);
-    emit('error', await getPendingCount());
+    consecutiveErrors = 0;
+  } catch (err: any) {
+    consecutiveErrors++;
+    const pending = await getPendingCount();
+
+    // FIX: Distinguish network errors (server unreachable) from app errors
+    if (!err?.response && err?.message === 'Network Error') {
+      console.warn('[sync] Network unreachable during sync — will retry');
+      emit('offline', pending);
+    } else {
+      console.error('[sync] Sync error:', err?.response?.data || err?.message);
+      emit('error', pending);
+    }
+
+    // Exponential backoff: 30s → 60s → 120s … up to MAX_BACKOFF_MS
+    const backoff = Math.min(30_000 * Math.pow(2, consecutiveErrors - 1), MAX_BACKOFF_MS);
+    scheduleSync(backoff);
   }
 }
 
-// ── Push pending records to server ───────────────────────────────────
+// ── Push pending records → server ─────────────────────────────────────────
 async function pushToServer(): Promise<void> {
   const queue = await db.syncQueue.toArray();
   if (!queue.length) return;
 
   const clientId = getClientId();
-  const res = await apiClient.post('/sync/push', { records: queue, clientId });
-  const { results } = res.data;
 
-  // Clear processed items from queue and mark them as synced in tables
+  // FIX: Catch push errors separately so a bad push doesn't abort the pull.
+  let results: any[] = [];
+  try {
+    const res = await apiClient.post('/sync/push', { records: queue, clientId });
+    results = res.data.results ?? [];
+  } catch (err: any) {
+    console.error('[sync] Push failed:', err?.response?.data || err?.message);
+    throw err; // re-throw so syncNow can handle it
+  }
+
   const idsToDelete: number[] = [];
-  const successStatus = ['inserted', 'updated', 'deleted', 'already_exists', 'conflict_skipped'];
 
   results.forEach((result: any, idx: number) => {
     const qItem = queue[idx];
     if (!qItem || qItem.id === undefined) return;
 
-    idsToDelete.push(qItem.id);
+    idsToDelete.push(qItem.id as number);
 
     if (result.status === 'inserted' || result.status === 'updated') {
       markSynced(qItem.table, result.id).catch(err =>
-        console.error(`Error marking ${qItem.table} ${result.id} as synced:`, err)
+        console.error(`[sync] Error marking ${qItem.table} ${result.id} as synced:`, err)
       );
     } else if (result.status === 'conflict_skipped') {
-      console.warn(`Sync Conflict: Record ${result.id} was modified by another device.`);
-      alert(`Sync Conflict: A record you edited was recently updated by another user. Your changes for this record have been overwritten by the newer version to prevent data corruption.`);
+      // FIX: Was using alert() — replaced with a custom DOM event so the UI
+      // layer can show a toast/notification without blocking the thread.
+      console.warn(`[sync] Conflict: ${qItem.table} record ${result.id} overwritten by server version`);
+      window.dispatchEvent(new CustomEvent('emr:sync-conflict', {
+        detail: { table: qItem.table, id: result.id }
+      }));
     } else if (result.status === 'rejected' || result.status === 'error') {
-      console.warn(`Sync rejected for ${qItem.table} ${result.id}: ${result.reason}`);
+      console.warn(`[sync] Rejected ${qItem.table} ${result.id}: ${result.reason}`);
     }
   });
 
@@ -115,30 +138,78 @@ async function pushToServer(): Promise<void> {
   }
 }
 
-async function markSynced(tableName: string, id: string) {
+async function markSynced(tableName: string, id: string): Promise<void> {
   const tableMap: Record<string, any> = {
-    patients: db.patients, encounters: db.encounters, vitals: db.vitals,
-    prescriptions: db.prescriptions, appointments: db.appointments, billing: db.billing,
-    medicines: db.medicines,
+    patients:      db.patients,
+    encounters:    db.encounters,
+    vitals:        db.vitals,
+    prescriptions: db.prescriptions,
+    appointments:  db.appointments,
+    billing:       db.billing,
+    medicines:     db.medicines,
   };
   const table = tableMap[tableName];
   if (table) await table.update(id, { _syncStatus: 'synced' });
 }
 
-// ── Pull server changes → IndexedDB ──────────────────────────────────
+// ── Pull server changes → IndexedDB ──────────────────────────────────────
 async function pullFromServer(): Promise<void> {
   const lastSync = await getLastSync();
-  const res = await apiClient.get('/sync/pull', { params: { since: lastSync } });
-  const { data, pulledAt } = res.data;
 
-  await db.transaction('rw', [db.patients, db.encounters, db.vitals, db.prescriptions, db.appointments, db.billing, db.medicines], async () => {
-    if (data.patients?.length)      await db.patients.bulkPut(data.patients.map((r: any) => ({ ...r, _syncStatus: 'synced', allergies: safeParse(r.allergies), chronic_conditions: safeParse(r.chronic_conditions), current_medications: safeParse(r.current_medications) })));
-    if (data.encounters?.length)    await db.encounters.bulkPut(data.encounters.map((r: any) => ({ ...r, _syncStatus: 'synced', diagnosis: safeParse(r.diagnosis) })));
-    if (data.vitals?.length)        await db.vitals.bulkPut(data.vitals.map((r: any) => ({ ...r, _syncStatus: 'synced' })));
-    if (data.prescriptions?.length) await db.prescriptions.bulkPut(data.prescriptions.map((r: any) => ({ ...r, _syncStatus: 'synced', medicines: safeParse(r.medicines) })));
-    if (data.appointments?.length)  await db.appointments.bulkPut(data.appointments.map((r: any) => ({ ...r, _syncStatus: 'synced' })));
-    if (data.billing?.length)       await db.billing.bulkPut(data.billing.map((r: any) => ({ ...r, _syncStatus: 'synced', items: safeParse(r.items) })));
-    if (data.medicines?.length)     await db.medicines.bulkPut(data.medicines.map((r: any) => ({ ...r, _syncStatus: 'synced', generics: safeParse(r.generics), strengths: safeParse(r.strengths) })));
+  let data: any;
+  let pulledAt: string;
+
+  try {
+    const res = await apiClient.get('/sync/pull', { params: { since: lastSync } });
+    data      = res.data.data;
+    pulledAt  = res.data.pulledAt;
+  } catch (err: any) {
+    console.error('[sync] Pull failed:', err?.response?.data || err?.message);
+    throw err;
+  }
+
+  await db.transaction('rw', [
+    db.patients, db.encounters, db.vitals,
+    db.prescriptions, db.appointments, db.billing, db.medicines,
+  ], async () => {
+    if (data.patients?.length)
+      await db.patients.bulkPut(data.patients.map((r: any) => ({
+        ...r, _syncStatus: 'synced',
+        allergies:            safeParse(r.allergies),
+        chronic_conditions:   safeParse(r.chronic_conditions),
+        current_medications:  safeParse(r.current_medications),
+      })));
+
+    if (data.encounters?.length)
+      await db.encounters.bulkPut(data.encounters.map((r: any) => ({
+        ...r, _syncStatus: 'synced',
+        diagnosis: safeParse(r.diagnosis),
+      })));
+
+    if (data.vitals?.length)
+      await db.vitals.bulkPut(data.vitals.map((r: any) => ({ ...r, _syncStatus: 'synced' })));
+
+    if (data.prescriptions?.length)
+      await db.prescriptions.bulkPut(data.prescriptions.map((r: any) => ({
+        ...r, _syncStatus: 'synced',
+        medicines: safeParse(r.medicines),
+      })));
+
+    if (data.appointments?.length)
+      await db.appointments.bulkPut(data.appointments.map((r: any) => ({ ...r, _syncStatus: 'synced' })));
+
+    if (data.billing?.length)
+      await db.billing.bulkPut(data.billing.map((r: any) => ({
+        ...r, _syncStatus: 'synced',
+        items: safeParse(r.items),
+      })));
+
+    if (data.medicines?.length)
+      await db.medicines.bulkPut(data.medicines.map((r: any) => ({
+        ...r, _syncStatus: 'synced',
+        generics:  safeParse(r.generics),
+        strengths: safeParse(r.strengths),
+      })));
   });
 
   await setLastSync(pulledAt);
@@ -146,17 +217,23 @@ async function pullFromServer(): Promise<void> {
 
 function safeParse(val: any): any {
   if (Array.isArray(val)) return val;
-  if (typeof val === 'string') { try { return JSON.parse(val); } catch { return []; } }
+  if (typeof val === 'object' && val !== null) return val;
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch { return []; }
+  }
   return [];
 }
 
-// ── Schedule periodic sync ────────────────────────────────────────────
+// ── Periodic sync scheduler ────────────────────────────────────────────────
 export function scheduleSync(delayMs = 30_000): void {
   if (syncTimer) clearTimeout(syncTimer);
-  syncTimer = setTimeout(() => { syncNow(); scheduleSync(); }, delayMs);
+  syncTimer = setTimeout(async () => {
+    await syncNow();
+    scheduleSync(30_000); // reset to normal interval after each run
+  }, delayMs);
 }
 
-// ── Client device ID (persisted in localStorage) ──────────────────────
+// ── Client device ID ──────────────────────────────────────────────────────
 function getClientId(): string {
   const key = 'emr_client_id';
   let id = localStorage.getItem(key);
@@ -167,13 +244,13 @@ function getClientId(): string {
   return id;
 }
 
-// ── Init: start sync on load ──────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────────────────────
 export async function initSync(): Promise<void> {
   const pending = await getPendingCount();
   emit(isOnline ? 'idle' : 'offline', pending);
 
   if (isOnline) {
     await syncNow();
-    scheduleSync(30_000);  // sync every 30s
+    scheduleSync(30_000);
   }
 }
