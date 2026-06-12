@@ -40,19 +40,37 @@ const ALLOWED_ORIGINS = [
   /\.vercel\.app$/,
 ];
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, server-to-server) or local file:// page loads
-    if (!origin || origin === 'null') return callback(null, true);
-    
-    const allowed = ALLOWED_ORIGINS.some(o =>
-      typeof o === 'string' ? o === origin : o.test(origin)
-    );
-    callback(null, allowed ? true : new Error(`CORS: origin ${origin} not allowed`));
-  },
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization','X-CSRF-Token','X-Super-Admin-Key'],
-  credentials: true,
+app.use(cors((req, callback) => {
+  const origin = req.header('Origin');
+  let allowed = false;
+
+  if (!origin || origin === 'null') {
+    allowed = true;
+  } else {
+    // Check if same-origin (origin host matches req.headers.host)
+    let isSameOrigin = false;
+    try {
+      const originHost = new URL(origin).host;
+      if (originHost === req.headers.host) {
+        isSameOrigin = true;
+      }
+    } catch {}
+
+    if (isSameOrigin) {
+      allowed = true;
+    } else {
+      allowed = ALLOWED_ORIGINS.some(o =>
+        typeof o === 'string' ? o === origin : o.test(origin)
+      );
+    }
+  }
+
+  callback(null, {
+    origin: allowed,
+    methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+    allowedHeaders: ['Content-Type','Authorization','X-CSRF-Token','X-Super-Admin-Key'],
+    credentials: true,
+  });
 }));
 
 // CSRF Double-Submit Middleware
@@ -62,6 +80,9 @@ app.use((req, res, next) => {
   
   // Skip CSRF for login/register
   if (req.path.startsWith('/api/auth/login') || req.path === '/api/auth/register') return next();
+
+  // Skip CSRF for super-admin endpoints as they use header-based authentication (X-Super-Admin-Key)
+  if (req.path.startsWith('/api/super-admin')) return next();
   
   // Mobile app might not use cookies, fallback to authorization header for CSRF if token in header?
   // Let's enforce CSRF for all state-changing requests using cookies
