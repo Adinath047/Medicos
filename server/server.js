@@ -351,11 +351,13 @@ app.use((err, req, res, _next) => {
 })();
 
 // ── Start ─────────────────────────────────────────────────────────────────
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🏥 Medicos EMR Server`);
-  console.log(`   Local:    http://localhost:${PORT}`);
-  console.log(`   Network:  http://0.0.0.0:${PORT}  (accessible on hospital LAN)`);
-  console.log(`   API docs: http://localhost:${PORT}/api/health\n`);
-});
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n🏥 Medicos EMR Server`);
+    console.log(`   Local:    http://localhost:${PORT}`);
+    console.log(`   Network:  http://0.0.0.0:${PORT}  (accessible on hospital LAN)`);
+    console.log(`   API docs: http://localhost:${PORT}/api/health\n`);
+  });
+}
 
 module.exports = app;
