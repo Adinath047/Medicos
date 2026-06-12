@@ -42,8 +42,8 @@ const ALLOWED_ORIGINS = [
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, server-to-server)
-    if (!origin) return callback(null, true);
+    // Allow requests with no origin (mobile apps, curl, server-to-server) or local file:// page loads
+    if (!origin || origin === 'null') return callback(null, true);
     
     const allowed = ALLOWED_ORIGINS.some(o =>
       typeof o === 'string' ? o === origin : o.test(origin)
