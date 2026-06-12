@@ -148,8 +148,12 @@ export default function LoginPage() {
                 type="text"
                 placeholder="e.g. hsp-001"
                 value={hospitalCode}
-                onChange={e => setHospitalCode(e.target.value)}
+                onChange={e => setHospitalCode(e.target.value.toLowerCase().trim())}
                 required
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="off"
+                spellCheck={false}
                 style={{ textTransform: 'lowercase' }}
               />
             </div>

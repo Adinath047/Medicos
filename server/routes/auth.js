@@ -139,7 +139,7 @@ router.get('/me', authMiddleware, async (req, res) => {
 
 // ── GET /api/auth/hospital/:code/staff ───────────────────────────────────
 router.get('/hospital/:code/staff', async (req, res) => {
-  const code = req.params.code.trim();
+  const code = req.params.code.trim().toLowerCase();
   try {
     const hospital = await queryOne(
       'SELECT id, name FROM hospitals WHERE id = $1 AND is_active = 1',
