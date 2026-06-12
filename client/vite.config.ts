@@ -7,9 +7,23 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      workbox: { 
+      // Force new SW to activate immediately without waiting for tabs to close.
+      // Without this, mobile users stay on the OLD cached version until they
+      // manually close all tabs — which they never do.
+      injectManifest: undefined,
+      workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        navigateFallbackDenylist: [/^\/super-admin/, /^\/api/]
+        navigateFallbackDenylist: [/^\/super-admin/, /^\/api/],
+        // Take control immediately on update
+        skipWaiting: true,
+        clientsClaim: true,
+        // API calls: network-first — never serve stale API responses from cache
+        runtimeCaching: [
+          {
+            urlPattern: /^\/api\/.*/i,
+            handler: 'NetworkOnly',
+          },
+        ],
       },
       manifest: {
         name: 'Medicos EMR',
