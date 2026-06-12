@@ -4,353 +4,352 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Medicos Super Admin Portal</title>
-  <!-- Outfit Google Font -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Outfit', 'sans-serif'],
-          },
-        }
-      }
-    }
+    tailwind.config = { theme: { extend: { fontFamily: { sans: ['Outfit', 'sans-serif'] } } } }
   </script>
   <style>
-    body {
-      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
-      color: #f1f5f9;
-      min-height: 100vh;
-    }
-    .glass-card {
-      background: rgba(30, 41, 59, 0.45);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-    }
-    .glass-input {
-      background: rgba(15, 23, 42, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      color: #f8fafc;
-      transition: all 0.2s ease;
-    }
-    .glass-input:focus {
-      outline: none;
-      border-color: #0d9488;
-      box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.25);
-    }
-    .scrollbar-thin::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    .scrollbar-thin::-webkit-scrollbar-track {
-      background: rgba(15, 23, 42, 0.2);
-    }
-    .scrollbar-thin::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.15);
-      border-radius: 4px;
-    }
-    .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-      background: rgba(255, 255, 255, 0.25);
-    }
+    body { background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); color: #f1f5f9; min-height: 100vh; }
+    .glass-card { background: rgba(30,41,59,0.45); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3); }
+    .glass-input { background: rgba(15,23,42,0.6); border: 1px solid rgba(255,255,255,0.1); color: #f8fafc; transition: all 0.2s ease; }
+    .glass-input:focus { outline: none; border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,0.25); }
+    .glass-input::placeholder { color: rgba(148,163,184,0.5); }
+    select.glass-input option { background: #1e293b; }
+    .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: rgba(15,23,42,0.2); }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+    .tab-btn { transition: all 0.2s; }
+    .tab-btn.active { background: rgba(13,148,136,0.2); border-color: rgba(13,148,136,0.5); color: #2dd4bf; }
+    .modal-overlay { background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); }
+    @keyframes slideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+    .slide-up { animation: slideUp 0.25s ease-out; }
   </style>
 </head>
 <body class="font-sans antialiased text-slate-200">
 
-  <!-- 🔐 Secret Key Gate Modal -->
-  <div id="key-gate" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md hidden transition-all duration-300">
-    <div class="w-full max-w-md p-8 rounded-2xl glass-card text-center border border-teal-500/25">
+  <!-- Secret Key Gate Modal -->
+  <div id="key-gate" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay hidden">
+    <div class="w-full max-w-md p-8 rounded-2xl glass-card text-center border border-teal-500/25 slide-up">
       <div class="text-5xl mb-4">🛡️</div>
-      <h2 class="text-2xl font-extrabold text-teal-400 mb-2">Security Authorization</h2>
-      <p class="text-slate-400 text-sm mb-6">Enter the Super Admin Secret Key to access this management console.</p>
-      
-      <form id="key-gate-form" onsubmit="saveSecretKey(event)">
-        <div class="mb-4">
-          <input 
-            type="password" 
-            id="admin-secret-input" 
-            placeholder="••••••••••••••••" 
-            class="w-full px-4 py-3 rounded-lg text-center glass-input"
-            required
-          />
+      <h2 class="text-2xl font-extrabold text-teal-400 mb-1">Super Admin Access</h2>
+      <p class="text-slate-400 text-sm mb-6">Enter the Super Admin Secret Key to access this console.</p>
+      <form id="key-gate-form" onsubmit="saveSecretKey(event)" class="text-left space-y-4">
+        <div>
+          <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Secret Key *</label>
+          <input type="password" id="admin-secret-input" placeholder="••••••••••••••••"
+            class="w-full px-4 py-2.5 rounded-lg glass-input text-sm text-center" required />
         </div>
-        <button type="submit" class="w-full py-3 bg-teal-600 hover:bg-teal-500 transition font-semibold rounded-lg shadow-lg shadow-teal-900/30">
-          Verify & Unlock
+        <button type="submit" class="w-full py-3 bg-teal-600 hover:bg-teal-500 transition font-semibold rounded-lg text-sm">
+          Verify &amp; Unlock Console
         </button>
       </form>
     </div>
   </div>
 
-  <!-- Main Container -->
-  <div class="max-w-7xl mx-auto px-4 py-6">
-    
-    <!-- 🏥 Header -->
-    <header class="flex flex-col sm:flex-row justify-between items-center p-6 rounded-2xl glass-card mb-6 gap-4">
-      <div class="flex items-center gap-4">
-        <div class="p-3 bg-teal-600/20 text-teal-400 rounded-xl border border-teal-500/30 text-2xl">
-          🏥
-        </div>
+  <!-- Reset Password Modal -->
+  <div id="reset-modal" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay hidden">
+    <div class="w-full max-w-sm p-7 rounded-2xl glass-card border border-amber-500/25 slide-up">
+      <div class="text-3xl mb-3 text-center">🔑</div>
+      <h3 class="text-lg font-bold text-white text-center mb-1">Reset Password</h3>
+      <p id="reset-modal-name" class="text-slate-400 text-xs text-center mb-5"></p>
+      <div class="space-y-3">
         <div>
-          <h1 class="text-2xl font-black tracking-tight text-white">Medicos</h1>
-          <p class="text-slate-400 text-xs font-semibold tracking-wider uppercase">Super Admin / Provisioning Console</p>
+          <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">New Password *</label>
+          <input type="password" id="reset-new-password" placeholder="Min 8 characters"
+            class="w-full px-4 py-2.5 rounded-lg glass-input text-sm" minlength="8" required />
+        </div>
+        <div class="flex gap-3 mt-4">
+          <button onclick="closeResetModal()" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm font-semibold transition">Cancel</button>
+          <button onclick="submitResetPassword()" class="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-semibold transition">Reset Password</button>
         </div>
       </div>
-      <div class="flex items-center gap-4">
-        <div class="px-3 py-1.5 bg-teal-950/50 border border-teal-800 text-teal-400 rounded-full text-xs font-bold flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-full bg-teal-400 animate-pulse"></span>
-          Connected
+    </div>
+  </div>
+
+  <!-- Edit Hospital Modal -->
+  <div id="edit-hospital-modal" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay hidden">
+    <div class="w-full max-w-sm p-7 rounded-2xl glass-card border border-sky-500/25 slide-up">
+      <div class="text-3xl mb-3 text-center">✏️</div>
+      <h3 class="text-lg font-bold text-white text-center mb-5">Edit Hospital</h3>
+      <input type="hidden" id="edit-hospital-id" />
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Hospital Name *</label>
+          <input type="text" id="edit-hospital-name" class="w-full px-4 py-2.5 rounded-lg glass-input text-sm" />
         </div>
-        <button onclick="logoutAdmin()" class="px-4 py-2 bg-slate-800 hover:bg-rose-950/50 hover:border-rose-900 border border-slate-700 rounded-lg text-xs font-bold transition">
-          🔒 Lock Console
-        </button>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">City</label>
+            <input type="text" id="edit-hospital-city" class="w-full px-4 py-2.5 rounded-lg glass-input text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Type</label>
+            <select id="edit-hospital-type" class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm">
+              <option value="General">General</option>
+              <option value="Specialty">Specialty</option>
+              <option value="Teaching">Teaching</option>
+              <option value="Clinic">Clinic</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Phone</label>
+          <input type="text" id="edit-hospital-phone" class="w-full px-4 py-2.5 rounded-lg glass-input text-sm" />
+        </div>
+        <div class="flex gap-3 mt-4">
+          <button onclick="closeEditHospitalModal()" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm font-semibold transition">Cancel</button>
+          <button onclick="submitEditHospital()" class="flex-1 py-2.5 bg-sky-600 hover:bg-sky-500 rounded-lg text-sm font-semibold transition">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <div class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- Header -->
+    <header class="flex flex-col sm:flex-row justify-between items-center p-5 rounded-2xl glass-card mb-6 gap-4">
+      <div class="flex items-center gap-4">
+        <div class="p-3 bg-teal-600/20 text-teal-400 rounded-xl border border-teal-500/30 text-2xl">🏥</div>
+        <div>
+          <h1 class="text-2xl font-black tracking-tight text-white">Medicos EMR</h1>
+          <p class="text-slate-400 text-xs font-semibold tracking-wider uppercase">Super Admin Console</p>
+        </div>
+      </div>
+      <div class="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto justify-end">
+        <div id="endpoint-badge" class="px-3 py-1.5 bg-slate-900/60 border border-slate-700 text-slate-300 rounded-lg text-xs font-mono truncate max-w-[240px]">Host: —</div>
+        <div class="flex gap-2">
+          <button onclick="logoutAdmin()" class="px-3.5 py-2 bg-slate-800 hover:bg-rose-950/50 hover:border-rose-900 border border-slate-700 rounded-lg text-xs font-bold transition">🔒 Lock</button>
+        </div>
       </div>
     </header>
 
-    <!-- 📊 Dashboard Grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+    <!-- Tabs -->
+    <div class="flex gap-2 mb-6">
+      <button id="tab-hospitals" onclick="switchTab('hospitals')" class="tab-btn active px-5 py-2.5 rounded-xl border border-slate-700 text-sm font-bold">🏢 Hospitals</button>
+      <button id="tab-staff" onclick="switchTab('staff')" class="tab-btn px-5 py-2.5 rounded-xl border border-slate-700 text-sm font-bold">👥 Staff</button>
+      <button id="tab-audit" onclick="switchTab('audit')" class="tab-btn px-5 py-2.5 rounded-xl border border-slate-700 text-sm font-bold">📋 Audit Log</button>
+    </div>
 
-      <!-- Left Column: Hospitals (4 cols) -->
-      <div class="lg:col-span-4 flex flex-col gap-6">
-        
-        <!-- Add Hospital Card -->
+    <!-- ─── TAB: HOSPITALS ─── -->
+    <div id="view-hospitals" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- Add Hospital -->
+      <div class="lg:col-span-4">
         <section class="p-6 rounded-2xl glass-card">
-          <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
-            <span>🏢</span> Register Hospital
-          </h3>
+          <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">🏢 Register Hospital</h3>
           <form id="hospital-form" onsubmit="createHospital(event)" class="space-y-4">
             <div>
               <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Hospital Code / ID *</label>
-              <input 
-                type="text" 
-                id="hsp-id" 
-                placeholder="e.g. hsp-002" 
-                class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm font-semibold uppercase"
-                required
-              />
+              <input type="text" id="hsp-id" placeholder="e.g. hsp-002"
+                class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm font-semibold" required />
             </div>
             <div>
               <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Hospital Name *</label>
-              <input 
-                type="text" 
-                id="hsp-name" 
-                placeholder="e.g. City General Clinic" 
-                class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm"
-                required
-              />
+              <input type="text" id="hsp-name" placeholder="e.g. City General Clinic"
+                class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm" required />
             </div>
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">City</label>
-                <input 
-                  type="text" 
-                  id="hsp-city" 
-                  placeholder="e.g. Mumbai" 
-                  class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm"
-                />
+                <input type="text" id="hsp-city" placeholder="e.g. Mumbai" class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm" />
               </div>
               <div>
                 <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Type</label>
                 <select id="hsp-type" class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm">
-                  <option value="General">General</option>
-                  <option value="Specialty">Specialty</option>
-                  <option value="Teaching">Teaching</option>
-                  <option value="Clinic">Clinic</option>
+                  <option>General</option><option>Specialty</option><option>Teaching</option><option>Clinic</option>
                 </select>
               </div>
             </div>
             <div>
               <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Contact Phone</label>
-              <input 
-                type="text" 
-                id="hsp-phone" 
-                placeholder="e.g. +91-22-987654" 
-                class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm"
-              />
+              <input type="text" id="hsp-phone" placeholder="+91-22-987654" class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm" />
             </div>
             <button type="submit" class="w-full py-2.5 bg-teal-600 hover:bg-teal-500 font-semibold text-sm rounded-lg transition mt-2">
-              Add Hospital +
+              ➕ Add Hospital
             </button>
           </form>
         </section>
+      </div>
 
-        <!-- Registered Hospitals Directory -->
-        <section class="p-6 rounded-2xl glass-card flex-1">
+      <!-- Hospital List -->
+      <div class="lg:col-span-8">
+        <section class="p-6 rounded-2xl glass-card">
           <h3 class="text-lg font-bold text-white mb-4 flex justify-between items-center">
-            <span class="flex items-center gap-2">🏥 Hospital Numbers</span>
+            <span>🏥 Registered Hospitals</span>
             <span id="hospital-count-badge" class="px-2 py-0.5 text-xs bg-slate-800 rounded-full font-bold">0</span>
           </h3>
-          
-          <div id="hospitals-list" class="space-y-3 max-h-[350px] overflow-y-auto scrollbar-thin pr-1">
-            <!-- Loading placeholder -->
+          <div id="hospitals-list" class="space-y-3 max-h-[480px] overflow-y-auto scrollbar-thin pr-1">
             <div class="text-center py-8 text-slate-500 text-sm">Loading hospitals...</div>
           </div>
         </section>
-
       </div>
+    </div>
 
-      <!-- Right Column: Staff & Provisioning (8 cols) -->
-      <div class="lg:col-span-8 flex flex-col gap-6">
+    <!-- ─── TAB: STAFF ─── -->
+    <div id="view-staff" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-        <!-- Provision Staff Card -->
+      <!-- Provision Staff -->
+      <div class="lg:col-span-4">
         <section class="p-6 rounded-2xl glass-card">
-          <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
-            <span>👤</span> Provision Staff Member
-          </h3>
-          <form id="staff-form" onsubmit="createStaff(event)" class="space-y-4">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Full Name *</label>
-                <input 
-                  type="text" 
-                  id="staff-name" 
-                  placeholder="e.g. Dr. Amit Roy" 
-                  class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm"
-                  required
-                />
-              </div>
-              <div>
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Hospital Assignment *</label>
-                <select id="staff-hospital" class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm uppercase" required>
-                  <option value="">— Select Hospital —</option>
-                </select>
-              </div>
+          <h3 class="text-lg font-bold text-white mb-4">👤 Provision Staff</h3>
+          <form id="staff-form" onsubmit="createStaff(event)" class="space-y-3">
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Full Name *</label>
+              <input type="text" id="staff-name" placeholder="Dr. Amit Roy" class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm" required />
             </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Email *</label>
-                <input 
-                  type="email" 
-                  id="staff-email" 
-                  placeholder="e.g. amit@medicos.local" 
-                  class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm"
-                  required
-                />
-              </div>
-              <div>
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Temporary Password *</label>
-                <input 
-                  type="password" 
-                  id="staff-password" 
-                  placeholder="Min 8 characters" 
-                  class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm"
-                  required
-                  minlength="8"
-                />
-              </div>
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Hospital *</label>
+              <select id="staff-hospital" class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm" required>
+                <option value="">— Select Hospital —</option>
+              </select>
             </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Role *</label>
-                <select id="staff-role" onchange="toggleDoctorFields(this.value)" class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm" required>
-                  <option value="doctor">Doctor</option>
-                  <option value="receptionist">Receptionist</option>
-                  <option value="admin">Administrator</option>
-                  <option value="nurse">Nurse</option>
-                  <option value="pharmacist">Pharmacist</option>
-                  <option value="lab_technician">Lab Tech</option>
-                  <option value="billing">Billing / Finance</option>
-                </select>
-              </div>
-              <div id="staff-type-container" class="hidden">
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Receptionist Type</label>
-                <select id="staff-type" class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm">
-                  <option value="front_desk">Front Desk (Appointments/Beds)</option>
-                  <option value="pharmacy">Pharmacy Billing</option>
-                </select>
-              </div>
-              <div id="doc-specialization" class="md:col-span-2">
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Medical Specialization</label>
-                <input 
-                  type="text" 
-                  id="staff-specialization" 
-                  placeholder="e.g. Cardiology, Pediatrics" 
-                  class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm"
-                />
-              </div>
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Email *</label>
+              <input type="email" id="staff-email" placeholder="amit@medicos.local" class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm" required />
             </div>
-
-            <div id="doc-fees" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Temp Password *</label>
+              <input type="password" id="staff-password" placeholder="Min 8 characters" class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm" required minlength="8" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Role *</label>
+              <select id="staff-role" onchange="toggleDoctorFields(this.value)" class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm" required>
+                <option value="doctor">Doctor</option>
+                <option value="receptionist">Receptionist</option>
+                <option value="admin">Administrator</option>
+                <option value="nurse">Nurse</option>
+                <option value="pharmacist">Pharmacist</option>
+                <option value="lab_technician">Lab Technician</option>
+                <option value="billing">Billing / Finance</option>
+              </select>
+            </div>
+            <div id="doc-specialization">
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Specialization</label>
+              <input type="text" id="staff-specialization" placeholder="e.g. Cardiology" class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm" />
+            </div>
+            <div id="doc-fees" class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Consultation Fee (₹)</label>
-                <input 
-                  type="number" 
-                  id="staff-consultation-fee" 
-                  placeholder="500" 
-                  class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm"
-                />
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Consult Fee (₹)</label>
+                <input type="number" id="staff-consultation-fee" placeholder="500" class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm" />
               </div>
               <div>
                 <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Followup Fee (₹)</label>
-                <input 
-                  type="number" 
-                  id="staff-followup-fee" 
-                  placeholder="300" 
-                  class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm"
-                />
+                <input type="number" id="staff-followup-fee" placeholder="300" class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm" />
               </div>
             </div>
-
+            <div id="staff-type-container" class="hidden">
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Reception Type</label>
+              <select id="staff-type" class="w-full px-3.5 py-2.5 rounded-lg glass-input text-sm">
+                <option value="front_desk">Front Desk</option>
+                <option value="pharmacy">Pharmacy Billing</option>
+              </select>
+            </div>
             <button type="submit" class="w-full py-2.5 bg-teal-600 hover:bg-teal-500 font-semibold text-sm rounded-lg transition mt-2">
-              Create User Profile & Account
+              ➕ Create Staff Account
             </button>
           </form>
         </section>
+      </div>
 
-        <!-- Staff List -->
-        <section class="p-6 rounded-2xl glass-card flex-1">
-          <h3 class="text-lg font-bold text-white mb-4 flex justify-between items-center">
-            <span class="flex items-center gap-2">👥 Staff Directory</span>
-            <span id="staff-count-badge" class="px-2 py-0.5 text-xs bg-slate-800 rounded-full font-bold">0</span>
-          </h3>
-
+      <!-- Staff Directory -->
+      <div class="lg:col-span-8">
+        <section class="p-6 rounded-2xl glass-card">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-bold text-white">👥 Staff Directory</h3>
+            <div class="flex items-center gap-3">
+              <input type="text" id="staff-search" oninput="filterStaff(this.value)" placeholder="Search name / email…"
+                class="px-3 py-1.5 rounded-lg glass-input text-xs w-48" />
+              <span id="staff-count-badge" class="px-2 py-0.5 text-xs bg-slate-800 rounded-full font-bold">0</span>
+            </div>
+          </div>
           <div class="overflow-x-auto scrollbar-thin">
             <table class="w-full text-left text-sm border-collapse">
               <thead>
                 <tr class="border-b border-slate-700/60 text-slate-400 text-xs font-bold uppercase tracking-wider">
-                  <th class="py-3 px-4">Staff Name</th>
-                  <th class="py-3 px-4">Role</th>
-                  <th class="py-3 px-4">Hospital Code</th>
-                  <th class="py-3 px-4">Email Address</th>
-                  <th class="py-3 px-4 text-center">Status</th>
+                  <th class="py-3 px-3">Name</th>
+                  <th class="py-3 px-3">Role</th>
+                  <th class="py-3 px-3">Hospital</th>
+                  <th class="py-3 px-3">Email</th>
+                  <th class="py-3 px-3 text-center">Status</th>
+                  <th class="py-3 px-3 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody id="staff-table-body" class="divide-y divide-slate-800/50">
-                <!-- Loading placeholder -->
-                <tr>
-                  <td colspan="5" class="py-12 text-center text-slate-500">Loading staff directory...</td>
-                </tr>
+                <tr><td colspan="6" class="py-12 text-center text-slate-500">Loading staff...</td></tr>
               </tbody>
             </table>
           </div>
         </section>
-
       </div>
+    </div>
 
+    <!-- ─── TAB: AUDIT LOG ─── -->
+    <div id="view-audit" class="hidden">
+      <section class="p-6 rounded-2xl glass-card">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-5 gap-3">
+          <h3 class="text-lg font-bold text-white flex items-center gap-2">📋 Audit Log</h3>
+          <div class="flex flex-wrap items-center gap-2">
+            <select id="audit-filter" onchange="loadAuditLog(1)" class="px-3 py-1.5 rounded-lg glass-input text-xs">
+              <option value="">All Actions</option>
+              <option value="PROVISION_USER">Provision User</option>
+              <option value="TOGGLE_USER_STATUS">Toggle Status</option>
+              <option value="RESET_PASSWORD">Reset Password</option>
+              <option value="CREATE_HOSPITAL">Create Hospital</option>
+              <option value="EDIT_HOSPITAL">Edit Hospital</option>
+              <option value="DELETE_HOSPITAL">Delete Hospital</option>
+              <option value="LOGIN">Login</option>
+              <option value="LOGOUT">Logout</option>
+            </select>
+            <button onclick="loadAuditLog(1)" class="px-3.5 py-1.5 bg-teal-700 hover:bg-teal-600 text-xs font-bold rounded-lg transition">🔄 Refresh</button>
+            <span id="audit-total-badge" class="px-2 py-0.5 text-xs bg-slate-800 rounded-full font-bold">0 records</span>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto scrollbar-thin">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="border-b border-slate-700/60 text-slate-400 font-bold uppercase tracking-wider">
+                <th class="py-3 px-3">Timestamp</th>
+                <th class="py-3 px-3">Action</th>
+                <th class="py-3 px-3">User / Actor</th>
+                <th class="py-3 px-3">Table</th>
+                <th class="py-3 px-3">Record ID</th>
+                <th class="py-3 px-3">Details</th>
+                <th class="py-3 px-3">IP</th>
+              </tr>
+            </thead>
+            <tbody id="audit-table-body" class="divide-y divide-slate-800/50">
+              <tr><td colspan="7" class="py-12 text-center text-slate-500">Load audit log to begin.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div id="audit-pagination" class="flex justify-center gap-2 mt-5 hidden"></div>
+      </section>
     </div>
 
   </div>
 
-  <!-- 🔔 Toast System -->
-  <div id="toast" class="fixed bottom-6 right-6 px-5 py-3 rounded-lg shadow-xl translate-y-16 opacity-0 transition-all duration-300 z-50 text-sm font-semibold flex items-center gap-2"></div>
+  <!-- Toast -->
+  <div id="toast" class="fixed bottom-6 right-6 px-5 py-3 rounded-xl shadow-2xl translate-y-16 opacity-0 transition-all duration-300 z-50 text-sm font-semibold flex items-center gap-2"></div>
 
-  <!-- JS Code -->
   <script>
-    // State
+    // ── State ─────────────────────────────────────────────────────────────────
     let hospitals = [];
-    let staff = [];
+    let staff     = [];
+    let pendingResetUserId = null;
+    let currentAuditPage  = 1;
 
-    // On mount
-    window.onload = () => {
-      checkKeyGate();
-    };
+    // ── Init ──────────────────────────────────────────────────────────────────
+    window.onload = () => { checkKeyGate(); };
+
+    function getApiUrl() { return '/api'; }
 
     function checkKeyGate() {
       const key = localStorage.getItem('super_admin_key');
@@ -358,6 +357,7 @@
         document.getElementById('key-gate').classList.remove('hidden');
       } else {
         document.getElementById('key-gate').classList.add('hidden');
+        document.getElementById('endpoint-badge').innerText = `Host: ${window.location.hostname || 'Local'}`;
         loadAllData();
       }
     }
@@ -376,109 +376,84 @@
       checkKeyGate();
     }
 
-    // Helper for requests
-    async function apiFetch(url, options = {}) {
-      const key = localStorage.getItem('super_admin_key');
-      options.headers = {
-        ...(options.headers || {}),
-        'X-Super-Admin-Key': key || '',
-        'Content-Type': 'application/json'
-      };
+    // ── Tabs ──────────────────────────────────────────────────────────────────
+    function switchTab(tab) {
+      ['hospitals','staff','audit'].forEach(t => {
+        document.getElementById(`view-${t}`).classList.toggle('hidden', t !== tab);
+        document.getElementById(`tab-${t}`).classList.toggle('active', t === tab);
+      });
+      if (tab === 'audit' && currentAuditPage === 1) loadAuditLog(1);
+    }
 
+    // ── API Fetch ─────────────────────────────────────────────────────────────
+    async function apiFetch(path, options = {}) {
+      const baseUrl = getApiUrl();
+      const key     = localStorage.getItem('super_admin_key');
+      options.headers = { ...(options.headers || {}), 'X-Super-Admin-Key': key || '', 'Content-Type': 'application/json' };
       try {
-        const res = await fetch(url, options);
-        if (res.status === 403) {
-          showToast('❌ Unauthorized. Access Denied.', 'bg-rose-950 border border-rose-800 text-rose-300');
-          logoutAdmin();
-          throw new Error('Unauthorized');
-        }
+        const res  = await fetch(`${baseUrl}${path}`, options);
+        if (res.status === 403) { showToast('❌ Unauthorized. Access Denied.', 'error'); logoutAdmin(); throw new Error('Unauthorized'); }
         const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error || 'Server error');
-        }
+        if (!res.ok) throw new Error(data.error || 'Server error');
         return data;
       } catch (err) {
-        if (err.message !== 'Unauthorized') {
-          showToast(`❌ Error: ${err.message}`, 'bg-rose-950 border border-rose-800 text-rose-300');
-        }
+        if (err.message !== 'Unauthorized') showToast(`❌ ${err.message}`, 'error');
         throw err;
       }
     }
 
-    // Load Hospitals & Staff
+    // ── Load Data ─────────────────────────────────────────────────────────────
     async function loadAllData() {
       try {
-        hospitals = await apiFetch('/api/super-admin/hospitals');
-        staff = await apiFetch('/api/super-admin/users');
+        [hospitals, staff] = await Promise.all([apiFetch('/super-admin/hospitals'), apiFetch('/super-admin/users')]);
         renderHospitals();
         renderStaff();
-      } catch (e) {
-        console.error('Failed to load portal data:', e);
-      }
+      } catch {}
     }
 
-    // Toggle forms based on role
-    function toggleDoctorFields(role) {
-      const spec = document.getElementById('doc-specialization');
-      const fees = document.getElementById('doc-fees');
-      const type = document.getElementById('staff-type-container');
-
-      if (role === 'doctor') {
-        spec.classList.remove('hidden');
-        fees.classList.remove('hidden');
-      } else {
-        spec.classList.add('hidden');
-        fees.classList.add('hidden');
-      }
-
-      if (role === 'receptionist') {
-        type.classList.remove('hidden');
-      } else {
-        type.classList.add('hidden');
-      }
-    }
-
-    // Render Hospitals
+    // ── Hospitals ─────────────────────────────────────────────────────────────
     function renderHospitals() {
-      const container = document.getElementById('hospitals-list');
-      const countBadge = document.getElementById('hospital-count-badge');
-      const select = document.getElementById('staff-hospital');
-
-      container.innerHTML = '';
-      countBadge.innerText = hospitals.length;
-      
-      // Update select dropdown
+      const container  = document.getElementById('hospitals-list');
+      const badge      = document.getElementById('hospital-count-badge');
+      const select     = document.getElementById('staff-hospital');
+      badge.innerText  = hospitals.length;
       select.innerHTML = '<option value="">— Select Hospital —</option>';
+      container.innerHTML = '';
 
-      if (hospitals.length === 0) {
-        container.innerHTML = '<div class="text-center py-6 text-slate-500 text-xs italic">No hospitals registered yet.</div>';
+      if (!hospitals.length) {
+        container.innerHTML = '<div class="text-center py-8 text-slate-500 text-sm italic">No hospitals registered yet.</div>';
         return;
       }
 
       hospitals.forEach(h => {
-        // Add to dropdown
         const opt = document.createElement('option');
         opt.value = h.id;
         opt.innerText = `${h.name} (${h.id})`;
         select.appendChild(opt);
 
-        // Add to list
         const card = document.createElement('div');
-        card.className = 'p-4 rounded-xl border border-slate-800 bg-slate-900/40 flex justify-between items-center hover:border-slate-700 transition duration-200';
+        card.className = 'p-4 rounded-xl border border-slate-800 bg-slate-900/40 hover:border-slate-600 transition duration-200';
         card.innerHTML = `
-          <div class="flex-1">
-            <div class="font-bold text-white tracking-wide uppercase text-sm">${h.id}</div>
-            <div class="text-xs text-slate-300 font-semibold">${h.name}</div>
-            <div class="text-[10px] text-slate-500 mt-1">${h.city || 'No City'} · ${h.type || 'General'}</div>
+          <div class="flex justify-between items-start">
+            <div class="flex-1 min-w-0">
+              <div class="font-black text-white uppercase tracking-wide text-sm font-mono">${h.id}</div>
+              <div class="text-sm font-semibold text-slate-200 mt-0.5">${h.name}</div>
+              <div class="text-xs text-slate-500 mt-1">${h.city || 'No City'} · ${h.type || 'General'} · ${h.phone || 'No Phone'}</div>
+            </div>
+            <div class="flex flex-col items-end gap-2 ml-3">
+              <span class="px-2.5 py-1 text-xs bg-teal-900/40 border border-teal-800/50 rounded-lg text-teal-400 font-bold">${h.staff_count} Staff</span>
+              <span class="px-2 py-0.5 text-xs rounded-lg font-bold ${h.is_active == 1 ? 'text-emerald-400' : 'text-rose-400'}">
+                ${h.is_active == 1 ? '● Active' : '○ Inactive'}
+              </span>
+            </div>
           </div>
-          <div class="text-right flex flex-col items-end gap-1.5">
-            <span class="px-2.5 py-1 text-xs bg-slate-800 rounded-lg text-teal-400 font-bold border border-slate-700/60">
-              ${h.staff_count} Staff
-            </span>
-            <button 
-              onclick="deleteHospitalPrompt('${h.id}', '${h.name.replace(/'/g, "\\'")}')" 
-              class="px-2 py-0.5 text-[10px] uppercase font-bold text-rose-400 hover:text-rose-300 transition duration-200"
-            >
+          <div class="flex gap-2 mt-3">
+            <button onclick="openEditHospitalModal('${h.id}','${h.name.replace(/'/g,"\\'")}','${h.city||''}','${h.type||'General'}','${h.phone||''}')"
+              class="flex-1 py-1.5 text-xs font-bold bg-sky-900/30 border border-sky-800/50 text-sky-400 hover:bg-sky-900/60 rounded-lg transition">
+              ✏️ Edit
+            </button>
+            <button onclick="deleteHospitalPrompt('${h.id}','${h.name.replace(/'/g,"\\'")}')"
+              class="flex-1 py-1.5 text-xs font-bold bg-rose-900/20 border border-rose-900/40 text-rose-400 hover:bg-rose-900/40 rounded-lg transition">
               🗑️ Delete
             </button>
           </div>
@@ -487,59 +462,110 @@
       });
     }
 
-    // Render Staff list
-    function renderStaff() {
+    async function createHospital(e) {
+      e.preventDefault();
+      try {
+        await apiFetch('/super-admin/hospitals', {
+          method: 'POST',
+          body: JSON.stringify({
+            id: document.getElementById('hsp-id').value,
+            name: document.getElementById('hsp-name').value,
+            city: document.getElementById('hsp-city').value,
+            type: document.getElementById('hsp-type').value,
+            phone: document.getElementById('hsp-phone').value,
+          })
+        });
+        showToast('✅ Hospital registered!', 'success');
+        document.getElementById('hospital-form').reset();
+        await loadAllData();
+      } catch {}
+    }
+
+    function openEditHospitalModal(id, name, city, type, phone) {
+      document.getElementById('edit-hospital-id').value   = id;
+      document.getElementById('edit-hospital-name').value  = name;
+      document.getElementById('edit-hospital-city').value  = city;
+      document.getElementById('edit-hospital-type').value  = type;
+      document.getElementById('edit-hospital-phone').value = phone;
+      document.getElementById('edit-hospital-modal').classList.remove('hidden');
+    }
+
+    function closeEditHospitalModal() { document.getElementById('edit-hospital-modal').classList.add('hidden'); }
+
+    async function submitEditHospital() {
+      const id = document.getElementById('edit-hospital-id').value;
+      try {
+        await apiFetch(`/super-admin/hospitals/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            name:  document.getElementById('edit-hospital-name').value,
+            city:  document.getElementById('edit-hospital-city').value,
+            type:  document.getElementById('edit-hospital-type').value,
+            phone: document.getElementById('edit-hospital-phone').value,
+          })
+        });
+        showToast('✅ Hospital updated!', 'success');
+        closeEditHospitalModal();
+        await loadAllData();
+      } catch {}
+    }
+
+    async function deleteHospitalPrompt(id, name) {
+      if (!confirm(`WARNING: Delete "${name}" (${id})?\n\nThis deletes ALL staff accounts. Patient records are preserved.`)) return;
+      try {
+        await apiFetch(`/super-admin/hospitals/${id}`, { method: 'DELETE' });
+        showToast('🗑️ Hospital deleted.', 'success');
+        await loadAllData();
+      } catch {}
+    }
+
+    // ── Staff ─────────────────────────────────────────────────────────────────
+    function renderStaff(filtered = null) {
       const tbody = document.getElementById('staff-table-body');
-      const countBadge = document.getElementById('staff-count-badge');
-
+      const badge = document.getElementById('staff-count-badge');
+      const list  = filtered || staff;
+      badge.innerText = list.length;
       tbody.innerHTML = '';
-      countBadge.innerText = staff.length;
 
-      if (staff.length === 0) {
-        tbody.innerHTML = `
-          <tr>
-            <td colspan="5" class="py-12 text-center text-slate-500 italic text-xs">No staff users registered yet.</td>
-          </tr>
-        `;
+      if (!list.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="py-12 text-center text-slate-500 italic text-xs">No staff found.</td></tr>';
         return;
       }
 
       const ROLE_COLORS = {
-        admin:          'bg-rose-500/10 text-rose-400 border border-rose-500/20',
-        doctor:         'bg-teal-500/10 text-teal-400 border border-teal-500/20',
-        receptionist:   'bg-amber-500/10 text-amber-400 border border-amber-500/20',
-        nurse:          'bg-purple-500/10 text-purple-400 border border-purple-500/20',
-        pharmacist:     'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
+        admin: 'bg-rose-500/10 text-rose-400 border border-rose-500/20',
+        doctor: 'bg-teal-500/10 text-teal-400 border border-teal-500/20',
+        receptionist: 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
+        nurse: 'bg-purple-500/10 text-purple-400 border border-purple-500/20',
+        pharmacist: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
         lab_technician: 'bg-sky-500/10 text-sky-400 border border-sky-500/20',
-        billing:        'bg-pink-500/10 text-pink-400 border border-pink-500/20',
+        billing: 'bg-pink-500/10 text-pink-400 border border-pink-500/20',
       };
 
-      staff.forEach(s => {
+      list.forEach(s => {
         const tr = document.createElement('tr');
-        tr.className = 'hover:bg-slate-900/30 transition border-b border-slate-800/40 text-xs';
-        
+        tr.className = 'hover:bg-slate-900/30 transition border-b border-slate-800/40';
         const roleClass = ROLE_COLORS[s.role] || 'bg-slate-500/10 text-slate-400 border border-slate-500/20';
         const roleLabel = s.role === 'lab_technician' ? 'Lab Tech' : s.role;
-
         tr.innerHTML = `
-          <td class="py-3 px-4 font-bold text-white">${s.name}</td>
-          <td class="py-3 px-4">
-            <span class="px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-wide ${roleClass}">
-              ${roleLabel}
-            </span>
+          <td class="py-3 px-3 font-bold text-white text-xs">${s.name}</td>
+          <td class="py-3 px-3">
+            <span class="px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-wide ${roleClass}">${roleLabel}</span>
           </td>
-          <td class="py-3 px-4 font-mono font-bold text-slate-400 uppercase tracking-wide">${s.hospital_id}</td>
-          <td class="py-3 px-4 text-slate-300">${s.email}</td>
-          <td class="py-3 px-4 text-center">
-            <button 
-              onclick="toggleUserStatus('${s.id}', ${s.is_active})" 
-              class="px-2.5 py-1 text-[10px] uppercase font-black rounded-lg transition duration-200 ${
-                s.is_active === 1 
-                  ? 'bg-emerald-950/40 border border-emerald-800 text-emerald-400 hover:bg-rose-950/20 hover:border-rose-900 hover:text-rose-400' 
-                  : 'bg-rose-950/40 border border-rose-900 text-rose-400 hover:bg-emerald-950/20 hover:border-emerald-800 hover:text-emerald-400'
-              }"
-            >
-              ${s.is_active === 1 ? 'Active' : 'Blocked'}
+          <td class="py-3 px-3 font-mono text-[10px] font-bold text-slate-400 uppercase">${s.hospital_id || '—'}</td>
+          <td class="py-3 px-3 text-slate-300 text-xs">${s.email}</td>
+          <td class="py-3 px-3 text-center">
+            <button onclick="toggleUserStatus('${s.id}',${s.is_active})"
+              class="px-2 py-0.5 text-[10px] uppercase font-black rounded-lg transition ${s.is_active == 1
+                ? 'bg-emerald-950/40 border border-emerald-800 text-emerald-400 hover:bg-rose-950/20 hover:border-rose-900 hover:text-rose-400'
+                : 'bg-rose-950/40 border border-rose-900 text-rose-400 hover:bg-emerald-950/20 hover:border-emerald-800 hover:text-emerald-400'}">
+              ${s.is_active == 1 ? 'Active' : 'Blocked'}
+            </button>
+          </td>
+          <td class="py-3 px-3 text-center">
+            <button onclick="openResetModal('${s.id}','${s.name.replace(/'/g,"\\'")}')"
+              class="px-2 py-0.5 text-[10px] uppercase font-bold bg-amber-900/30 border border-amber-800/50 text-amber-400 hover:bg-amber-900/60 rounded-lg transition">
+              🔑 Reset
             </button>
           </td>
         `;
@@ -547,88 +573,153 @@
       });
     }
 
-    // Submit Hospital
-    async function createHospital(e) {
-      e.preventDefault();
-      const payload = {
-        id: document.getElementById('hsp-id').value,
-        name: document.getElementById('hsp-name').value,
-        city: document.getElementById('hsp-city').value,
-        type: document.getElementById('hsp-type').value,
-        phone: document.getElementById('hsp-phone').value,
-      };
-
-      try {
-        await apiFetch('/api/super-admin/hospitals', {
-          method: 'POST',
-          body: JSON.stringify(payload)
-        });
-        showToast('✅ Hospital registered successfully!', 'bg-emerald-950 border border-emerald-800 text-emerald-300');
-        document.getElementById('hospital-form').reset();
-        await loadAllData();
-      } catch (err) {}
+    function filterStaff(q) {
+      if (!q) { renderStaff(); return; }
+      const lq = q.toLowerCase();
+      renderStaff(staff.filter(s => s.name.toLowerCase().includes(lq) || s.email.toLowerCase().includes(lq)));
     }
 
-    // Submit Staff
+    function toggleDoctorFields(role) {
+      document.getElementById('doc-specialization').classList.toggle('hidden', role !== 'doctor');
+      document.getElementById('doc-fees').classList.toggle('hidden', role !== 'doctor');
+      document.getElementById('staff-type-container').classList.toggle('hidden', role !== 'receptionist');
+    }
+
     async function createStaff(e) {
       e.preventDefault();
-      const payload = {
-        name: document.getElementById('staff-name').value,
-        hospital_id: document.getElementById('staff-hospital').value,
-        email: document.getElementById('staff-email').value,
-        password: document.getElementById('staff-password').value,
-        role: document.getElementById('staff-role').value,
-        staff_type: document.getElementById('staff-type').value,
-        specialization: document.getElementById('staff-specialization').value,
-        consultation_fee: document.getElementById('staff-consultation-fee').value,
-        followup_fee: document.getElementById('staff-followup-fee').value,
+      try {
+        await apiFetch('/super-admin/users', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: document.getElementById('staff-name').value,
+            hospital_id: document.getElementById('staff-hospital').value,
+            email: document.getElementById('staff-email').value,
+            password: document.getElementById('staff-password').value,
+            role: document.getElementById('staff-role').value,
+            staff_type: document.getElementById('staff-type').value,
+            specialization: document.getElementById('staff-specialization').value,
+            consultation_fee: document.getElementById('staff-consultation-fee').value,
+            followup_fee: document.getElementById('staff-followup-fee').value,
+          })
+        });
+        showToast('👤 Staff provisioned!', 'success');
+        document.getElementById('staff-form').reset();
+        await loadAllData();
+      } catch {}
+    }
+
+    async function toggleUserStatus(userId, current) {
+      const target = current == 1 ? 0 : 1;
+      if (!confirm(target === 0 ? 'Block this account? They cannot log in.' : 'Reactivate this account?')) return;
+      try {
+        await apiFetch(`/super-admin/users/${userId}/status`, { method: 'PUT', body: JSON.stringify({ is_active: target }) });
+        showToast('✅ Status updated.', 'success');
+        await loadAllData();
+      } catch {}
+    }
+
+    // ── Reset Password ────────────────────────────────────────────────────────
+    function openResetModal(userId, userName) {
+      pendingResetUserId = userId;
+      document.getElementById('reset-modal-name').innerText = `for ${userName}`;
+      document.getElementById('reset-new-password').value = '';
+      document.getElementById('reset-modal').classList.remove('hidden');
+    }
+
+    function closeResetModal() { document.getElementById('reset-modal').classList.add('hidden'); pendingResetUserId = null; }
+
+    async function submitResetPassword() {
+      const pw = document.getElementById('reset-new-password').value;
+      if (!pw || pw.length < 8) { showToast('⚠️ Password must be at least 8 characters.', 'warn'); return; }
+      try {
+        await apiFetch(`/super-admin/users/${pendingResetUserId}/reset-password`, {
+          method: 'PUT',
+          body: JSON.stringify({ password: pw })
+        });
+        showToast('🔑 Password reset successfully!', 'success');
+        closeResetModal();
+      } catch {}
+    }
+
+    // ── Audit Log ─────────────────────────────────────────────────────────────
+    async function loadAuditLog(page = 1) {
+      currentAuditPage = page;
+      const action = document.getElementById('audit-filter').value;
+      const qs = `?page=${page}&limit=50${action ? `&action=${action}` : ''}`;
+      try {
+        const data = await apiFetch(`/super-admin/audit-log${qs}`);
+        renderAuditLog(data);
+      } catch {}
+    }
+
+    function renderAuditLog({ logs, total, page, pages }) {
+      const tbody = document.getElementById('audit-table-body');
+      const badge = document.getElementById('audit-total-badge');
+      badge.innerText = `${total} records`;
+      tbody.innerHTML = '';
+
+      const ACTION_COLORS = {
+        PROVISION_USER: 'text-teal-400', TOGGLE_USER_STATUS: 'text-amber-400',
+        RESET_PASSWORD: 'text-orange-400', CREATE_HOSPITAL: 'text-sky-400',
+        EDIT_HOSPITAL: 'text-blue-400', DELETE_HOSPITAL: 'text-rose-400',
+        LOGIN: 'text-emerald-400', LOGOUT: 'text-slate-400',
       };
 
-      try {
-        await apiFetch('/api/super-admin/users', {
-          method: 'POST',
-          body: JSON.stringify(payload)
+      if (!logs.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="py-12 text-center text-slate-500 italic">No audit entries found.</td></tr>';
+      } else {
+        logs.forEach(l => {
+          const tr = document.createElement('tr');
+          tr.className = 'hover:bg-slate-900/20 border-b border-slate-800/40';
+          const ts = new Date(l.created_at).toLocaleString('en-IN', { dateStyle:'short', timeStyle:'short' });
+          const color = ACTION_COLORS[l.action] || 'text-slate-400';
+          let details = '';
+          try { details = JSON.stringify(JSON.parse(l.details), null, 0).slice(0, 80); } catch { details = l.details || ''; }
+          tr.innerHTML = `
+            <td class="py-2.5 px-3 text-slate-400 whitespace-nowrap">${ts}</td>
+            <td class="py-2.5 px-3 font-bold ${color} whitespace-nowrap">${l.action}</td>
+            <td class="py-2.5 px-3 text-slate-300 font-mono text-[10px] max-w-[120px] truncate">${l.user_id}</td>
+            <td class="py-2.5 px-3 text-slate-400">${l.table_name || '—'}</td>
+            <td class="py-2.5 px-3 font-mono text-[10px] text-slate-400 max-w-[100px] truncate">${l.record_id || '—'}</td>
+            <td class="py-2.5 px-3 text-slate-500 text-[10px] max-w-[200px] truncate" title="${l.details || ''}">${details}</td>
+            <td class="py-2.5 px-3 text-slate-500 text-[10px]">${l.ip_address || '—'}</td>
+          `;
+          tbody.appendChild(tr);
         });
-        showToast('👤 Staff member provisioned successfully!', 'bg-emerald-950 border border-emerald-800 text-emerald-300');
-        document.getElementById('staff-form').reset();
-        toggleDoctorFields('doctor'); // Reset forms toggles
-        await loadAllData();
-      } catch (err) {}
+      }
+
+      // Pagination
+      const pag = document.getElementById('audit-pagination');
+      pag.innerHTML = '';
+      if (pages > 1) {
+        pag.classList.remove('hidden');
+        for (let i = 1; i <= pages; i++) {
+          const btn = document.createElement('button');
+          btn.innerText = i;
+          btn.onclick = () => loadAuditLog(i);
+          btn.className = `px-3 py-1.5 text-xs font-bold rounded-lg border transition ${i === page
+            ? 'bg-teal-700 border-teal-600 text-white'
+            : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`;
+          pag.appendChild(btn);
+        }
+      } else {
+        pag.classList.add('hidden');
+      }
     }
 
-    // Toggle active status
-    async function toggleUserStatus(userId, currentStatus) {
-      const targetStatus = currentStatus === 1 ? 0 : 1;
-      const confirmMsg = targetStatus === 0 
-        ? 'Are you sure you want to block/deactivate this staff account? They will be unable to log in.'
-        : 'Are you sure you want to reactivate this staff account?';
-      
-      if (!confirm(confirmMsg)) return;
-
-      try {
-        await apiFetch(`/api/super-admin/users/${userId}/status`, {
-          method: 'PUT',
-          body: JSON.stringify({ is_active: targetStatus })
-        });
-        showToast(`👤 Account status updated successfully.`, 'bg-emerald-950 border border-emerald-800 text-emerald-300');
-        await loadAllData();
-      } catch (err) {}
-    }
-
-    // Toast message
-    function showToast(message, classes) {
+    // ── Toast ─────────────────────────────────────────────────────────────────
+    function showToast(message, type = 'success') {
+      const STYLES = {
+        success: 'bg-emerald-950 border border-emerald-800 text-emerald-300',
+        error:   'bg-rose-950 border border-rose-800 text-rose-300',
+        warn:    'bg-amber-950 border border-amber-800 text-amber-300',
+      };
       const toast = document.getElementById('toast');
-      toast.innerText = message;
-      toast.className = `fixed bottom-6 right-6 px-5 py-3 rounded-lg shadow-xl transition-all duration-300 z-50 text-sm font-semibold flex items-center gap-2 ${classes}`;
-      
-      // Animate up
-      toast.classList.remove('translate-y-16', 'opacity-0');
-      toast.classList.add('translate-y-0', 'opacity-100');
-
-      setTimeout(() => {
-        toast.classList.remove('translate-y-0', 'opacity-100');
-        toast.classList.add('translate-y-16', 'opacity-0');
-      }, 4000);
+      toast.innerHTML = message;
+      toast.className = `fixed bottom-6 right-6 px-5 py-3 rounded-xl shadow-2xl z-50 text-sm font-semibold flex items-center gap-2 transition-all duration-300 ${STYLES[type] || STYLES.success}`;
+      toast.classList.remove('translate-y-16','opacity-0');
+      toast.classList.add('translate-y-0','opacity-100');
+      setTimeout(() => { toast.classList.remove('translate-y-0','opacity-100'); toast.classList.add('translate-y-16','opacity-0'); }, 4000);
     }
   </script>
 </body>
