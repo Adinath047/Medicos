@@ -5,10 +5,11 @@ import axios from 'axios';
 
 const _env = (import.meta as any).env ?? {};
 
-// FIX: Was falling back to '/api' for production, which would hit Vercel (no backend).
-// Must always use VITE_API_URL in production. Fail loudly if it's missing so you
-// catch it at build time rather than getting silent network errors at runtime.
+// Backend runs as a Vercel Serverless Function on the same domain as the frontend.
+// In production: use relative '/api' — same domain, no CORS, works on all devices.
+// In local dev: proxy to localhost:4000 (configured in vite.config.ts).
 const getBaseURL = (): string => {
+  // Allow override for special deployments (e.g. self-hosted backend)
   if (_env.VITE_API_URL) return _env.VITE_API_URL;
 
   if (typeof window !== 'undefined') {
@@ -18,12 +19,8 @@ const getBaseURL = (): string => {
     }
   }
 
-  // Production with no VITE_API_URL set — warn loudly
-  console.error(
-    '[client] VITE_API_URL is not set. API calls will fail in production. ' +
-    'Add VITE_API_URL=https://medicos-12.onrender.com/api to your Vercel environment variables.'
-  );
-  return '/api'; // last-resort fallback (will likely 404 on Vercel)
+  // Production on Vercel — backend is on the same domain, use relative URL
+  return '/api';
 };
 
 export const apiClient = axios.create({

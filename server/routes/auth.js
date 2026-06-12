@@ -59,13 +59,16 @@ router.post('/login',
 
       auditLog(user.id, 'LOGIN_SUCCESS', 'users', user.id, { email, role: user.role }, ip(req));
 
-      // FIX: sameSite:'none' + secure:true is required for cross-origin cookie delivery
-      // (Vercel frontend → Render backend). Without this the browser drops the cookie.
+      // Frontend and backend are on the same Vercel domain — use sameSite:'lax'
+      // which works on all devices including mobile. sameSite:'none' was for
+      // cross-origin (Vercel + Render) which is no longer needed.
+      const isProduction = process.env.NODE_ENV === 'production';
       const cookieOpts = {
         httpOnly: true,
-        secure:   true,          // required for sameSite:'none'
-        sameSite: 'none',        // required for cross-origin (different domains)
+        secure:   isProduction,   // HTTPS only in production
+        sameSite: 'lax',          // same-domain — lax is safe and works on mobile
         maxAge:   data.session.expires_in * 1000,
+        path:     '/',
       };
 
       const csrfToken = crypto.randomBytes(16).toString('hex');
@@ -122,7 +125,8 @@ router.post('/logout', async (req, res) => {
 
   // FIX: Must clear cookies with the SAME options they were set with
   // (secure, sameSite) otherwise the browser ignores the clear instruction.
-  const clearOpts = { secure: true, sameSite: 'none' };
+  const isProduction = process.env.NODE_ENV === 'production';
+  const clearOpts = { secure: isProduction, sameSite: 'lax', path: '/' };
   res.clearCookie('emr_token',  clearOpts);
   res.clearCookie('csrf_token', clearOpts);
   res.json({ success: true });

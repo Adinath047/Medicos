@@ -31,14 +31,24 @@ app.use(compression());
 app.use(cookieParser());
 
 // Restrict CORS
+const ALLOWED_ORIGINS = [
+  // Local development
+  'http://localhost:5173',
+  'http://localhost:4000',
+  'http://127.0.0.1:5173',
+  // Vercel production & preview deployments
+  /\.vercel\.app$/,
+];
+
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow local files (null origin), localhost, or process origin
-    if (!origin || origin === 'null' || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
-      callback(null, true);
-    } else {
-      callback(null, true); // Fallback to accept other origins for dev testing
-    }
+    // Allow requests with no origin (mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    
+    const allowed = ALLOWED_ORIGINS.some(o =>
+      typeof o === 'string' ? o === origin : o.test(origin)
+    );
+    callback(null, allowed ? true : new Error(`CORS: origin ${origin} not allowed`));
   },
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization','X-CSRF-Token','X-Super-Admin-Key'],
