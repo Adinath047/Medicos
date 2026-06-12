@@ -79,15 +79,27 @@ app.use((req, res, next) => {
 // Global Rate Limiting to prevent DDoS
 const rateLimit = require('express-rate-limit');
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5000, // Increased to 5000 to prevent false-positive blocking
+  windowMs: 15 * 60 * 1000,
+  max: 5000,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later.' }
 });
 
+// Strict login rate limit — 10 attempts per 15 min per IP to prevent brute-force
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // only count failed attempts
+  message: { error: 'Too many login attempts. Please wait 15 minutes before trying again.' }
+});
+
 // Apply global rate limiting to all /api routes
 app.use('/api', apiLimiter);
+// Apply strict rate limiting specifically to login
+app.use('/api/auth/login', loginLimiter);
 
 // Payload limits to prevent large payload attacks
 app.use(express.json({ limit: '2mb' }));
@@ -171,15 +183,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString(), version: '1.0.1', service: 'monolith' });
 });
 
-app.get('/api/auth/debug-users', async (req, res) => {
-  try {
-    const { query } = require('./db/database');
-    const users = await query('SELECT id, email, is_active, role FROM users');
-    res.json({ count: users.length, users });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// NOTE: /api/auth/debug-users removed — it exposed user data without authentication
 
 // Serve Standalone Super Admin Dashboard
 app.use('/super-admin', (req, res, next) => {

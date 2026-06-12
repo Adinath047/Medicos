@@ -86,8 +86,10 @@ function requireSameHospital(getHospitalId) {
         return res.status(403).json({ error: 'Cross-hospital access denied' });
       }
       next();
-    } catch {
-      next();
+    } catch (err) {
+      // Deny access on error — never grant access when we can't verify hospital scope
+      console.error('[requireSameHospital] error verifying hospital scope:', err.message);
+      return res.status(500).json({ error: 'Could not verify access scope' });
     }
   };
 }

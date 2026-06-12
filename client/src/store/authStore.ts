@@ -19,7 +19,6 @@ export interface AuthUser {
 
 interface AuthState {
   user:           AuthUser | null;
-  token:          string | null;
   isLoading:      boolean;
   loginError:     string | null;
   login:          (email: string, password: string) => Promise<boolean>;
@@ -28,35 +27,33 @@ interface AuthState {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+// Only the non-sensitive user PROFILE is cached in localStorage for instant UI
+// restore and offline support. The JWT token lives only in the HttpOnly cookie
+// — it is never accessible to JavaScript, preventing XSS token theft.
 function clearLocalAuth() {
-  localStorage.removeItem('emr_token');
   localStorage.removeItem('emr_user');
 }
 
-function persistLocalAuth(user: AuthUser, token: string) {
-  localStorage.setItem('emr_token', token);
+function persistLocalAuth(user: AuthUser) {
   localStorage.setItem('emr_user', JSON.stringify(user));
 }
 
 // ── Store ──────────────────────────────────────────────────────────────────
 export const useAuthStore = create<AuthState>((set, get) => ({
   user:       null,
-  token:      null,
   isLoading:  true,
   loginError: null,
 
   // ── restoreSession ───────────────────────────────────────────────────────
-  // Called once on app mount. Hits /auth/me with the cookie (or the token
-  // stored in localStorage via the Axios interceptor) to re-hydrate the user.
+  // Called once on app mount. Hits /auth/me using the HttpOnly cookie to
+  // re-hydrate the user. Shows cached profile instantly then validates server-side.
   restoreSession: async () => {
-    // FIX: Try a cached user first so the UI renders instantly, then validate
-    // against the server in the background. This eliminates the blank-screen
-    // flash on page refresh.
+    // Show cached user instantly so UI renders without a blank-screen flash
     const cachedUser = localStorage.getItem('emr_user');
     if (cachedUser) {
       try {
         const parsed = JSON.parse(cachedUser) as AuthUser;
-        set({ user: parsed, token: localStorage.getItem('emr_token'), isLoading: true });
+        set({ user: parsed, isLoading: true });
       } catch {
         clearLocalAuth();
       }
@@ -66,11 +63,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const res = await apiClient.get('/auth/me');
       const { user } = res.data as { user: AuthUser };
 
-      // Server may have issued a refreshed token in a Set-Cookie header;
-      // preserve whatever token we currently have in localStorage.
-      const token = localStorage.getItem('emr_token') || 'cookie-auth';
-      persistLocalAuth(user, token);
-      set({ user, token, isLoading: false });
+      persistLocalAuth(user);
+      set({ user, isLoading: false });
 
       // Kick off a sync after restoring the session
       import('../sync/syncManager').then(m => m.syncNow()).catch(console.error);
@@ -78,22 +72,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const status = err?.response?.status;
 
       if (status === 401) {
-        // Token expired — clear everything
+        // Cookie expired — clear cached profile
         clearLocalAuth();
-        set({ user: null, token: null, isLoading: false });
+        set({ user: null, isLoading: false });
       } else {
-        // Network error (CORS / Render cold-start / offline) — keep cached
-        // user so the app still works offline; just stop the loading spinner.
+        // Network error (offline) — keep cached profile so app still works offline
         console.warn('[authStore] Could not reach server to verify session:', err?.message);
         const cached = localStorage.getItem('emr_user');
         if (cached) {
           try {
-            set({ user: JSON.parse(cached), token: localStorage.getItem('emr_token'), isLoading: false });
+            set({ user: JSON.parse(cached), isLoading: false });
           } catch {
-            set({ user: null, token: null, isLoading: false });
+            set({ user: null, isLoading: false });
           }
         } else {
-          set({ user: null, token: null, isLoading: false });
+          set({ user: null, isLoading: false });
         }
       }
     }
@@ -104,10 +97,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ loginError: null });
     try {
       const res = await apiClient.post('/auth/login', { email, password });
-      const { user, token } = res.data as { user: AuthUser; token: string };
+      const { user } = res.data as { user: AuthUser; token: string };
 
-      persistLocalAuth(user, token);
-      set({ user, token, loginError: null });
+      // Token is in the HttpOnly cookie set by the server — do NOT store in localStorage
+      persistLocalAuth(user);
+      set({ user, loginError: null });
 
       // Kick off sync after login
       import('../sync/syncManager').then(m => m.syncNow()).catch(console.error);
@@ -129,12 +123,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Fire-and-forget the server-side logout (clears httpOnly cookie)
     apiClient.post('/auth/logout').catch(() => { /* ignore — local state cleared anyway */ });
     clearLocalAuth();
-    set({ user: null, token: null, loginError: null });
+    set({ user: null, loginError: null });
   },
 }));
 
 // ── Global 401 listener (from Axios interceptor) ──────────────────────────
-// FIX: guard added so this doesn't fire during SSR / non-browser environments
 if (typeof window !== 'undefined') {
   window.addEventListener('emr:logout', () => {
     useAuthStore.getState().logout();
