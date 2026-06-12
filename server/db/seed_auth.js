@@ -56,15 +56,15 @@ const seedUsers = [
 async function seed() {
   console.log('[seed] Seeding Supabase Auth and database users...');
   
-  // Seed default hospital
+  // Seed default hospital — always set is_active=1 so hospital code lookup works
   console.log('[seed] Seeding default hospital...');
   await pool.query(
-    `INSERT INTO hospitals (id, name, type, city, phone)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (id) DO NOTHING`,
+    `INSERT INTO hospitals (id, name, type, city, phone, is_active)
+     VALUES ($1, $2, $3, $4, $5, 1)
+     ON CONFLICT (id) DO UPDATE SET is_active = 1`,
     ['hsp-001', 'Medicos General Hospital', 'General', 'Mumbai', '+91-22-12345678']
   );
-  console.log('[seed] Default hospital seeded.');
+  console.log('[seed] Default hospital seeded with is_active=1.');
 
   for (const user of seedUsers) {
     console.log(`[seed] Checking user: ${user.email}`);
